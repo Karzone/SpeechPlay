@@ -358,6 +358,8 @@ function warmUp() {
   speechSynthesis.speak(u);
 }
 document.addEventListener("pointerdown", warmUp, { once: true });
+// browsers only allow audio after a gesture, so open the context on first touch
+document.addEventListener("pointerdown", () => getAudio(), { once: true });
 
 /* speak() guarantees onend ALWAYS runs exactly once.
    Without this, a device with no TTS voices (common on Android's first load and
@@ -411,6 +413,180 @@ function onceFn(fn) {
   const f = () => { if (f.called) return; f.called = true; if (fn) fn(); };
   f.called = false;
   return f;
+}
+
+/* ================= animal sounds (Web Audio) =================
+   Real animal noises synthesised from oscillators + filtered noise, rather
+   than a speech voice saying "moo". Falls back to the spoken version if
+   Web Audio is unavailable or throws. */
+let actx = null;
+function getAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!actx) { try { actx = new AC(); } catch (_) { return null; } }
+  if (actx.state === "suspended") { try { actx.resume(); } catch (_) {} }
+  return actx;
+}
+function noiseSource(ctx, dur) {
+  const n = Math.max(1, Math.ceil(ctx.sampleRate * dur));
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  return src;
+}
+function filt(ctx, freq, q, type) {
+  const f = ctx.createBiquadFilter();
+  f.type = type || "bandpass"; f.frequency.value = freq; f.Q.value = q;
+  return f;
+}
+// [[secondsFromStart, value], ...]
+function ramp(param, t, pts) {
+  param.setValueAtTime(pts[0][1], t);
+  for (let i = 1; i < pts.length; i++) param.linearRampToValueAtTime(pts[i][1], t + pts[i][0]);
+}
+function shape(ctx, t, pts) {
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(Math.max(1e-4, pts[0][1]), t);
+  for (let i = 1; i < pts.length; i++) g.gain.exponentialRampToValueAtTime(Math.max(1e-4, pts[i][1]), t + pts[i][0]);
+  return g;
+}
+
+const ANIMAL_SYNTH = {
+  // low larynx tone + two vocal-tract formants, with a rise-and-fall pitch
+  cow(ctx, t, out) {
+    const d = 1.35;
+    const o = ctx.createOscillator(); o.type = "sawtooth";
+    ramp(o.frequency, t, [[0, 145], [0.25, 182], [0.85, 168], [d, 104]]);
+    const vib = ctx.createOscillator(); vib.frequency.value = 5.5;
+    const vg = ctx.createGain(); vg.gain.value = 7;
+    vib.connect(vg); vg.connect(o.frequency);
+    const g = shape(ctx, t, [[0, 0.0001], [0.15, 0.55], [0.95, 0.5], [d, 0.0001]]);
+    const f1 = filt(ctx, 560, 4), f2 = filt(ctx, 1050, 7);
+    o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g); g.connect(out);
+    o.start(t); o.stop(t + d); vib.start(t); vib.stop(t + d);
+    return d;
+  },
+  // two barks: noise burst + fast downward pitch snap
+  dog(ctx, t, out) {
+    const bark = (t0) => {
+      const d = 0.2;
+      const o = ctx.createOscillator(); o.type = "sawtooth";
+      ramp(o.frequency, t0, [[0, 340], [0.05, 215], [d, 140]]);
+      const n = noiseSource(ctx, d);
+      const nf = filt(ctx, 1500, 1.2);
+      const of = filt(ctx, 800, 2.5);
+      const g = shape(ctx, t0, [[0, 0.0001], [0.02, 0.6], [d, 0.0001]]);
+      o.connect(of); of.connect(g); n.connect(nf); nf.connect(g); g.connect(out);
+      o.start(t0); o.stop(t0 + d); n.start(t0); n.stop(t0 + d);
+    };
+    bark(t); bark(t + 0.3);
+    return 0.55;
+  },
+  // rising-then-falling cry with a sweeping formant = "me-ow"
+  cat(ctx, t, out) {
+    const d = 0.8;
+    const o = ctx.createOscillator(); o.type = "sawtooth";
+    ramp(o.frequency, t, [[0, 480], [0.18, 820], [0.45, 700], [d, 515]]);
+    const f = filt(ctx, 900, 5);
+    ramp(f.frequency, t, [[0, 850], [0.18, 1900], [d, 750]]);
+    const g = shape(ctx, t, [[0, 0.0001], [0.08, 1.0], [0.6, 0.85], [d, 0.0001]]);
+    o.connect(f); f.connect(g); g.connect(out);
+    o.start(t); o.stop(t + d);
+    return d;
+  },
+  // three tight nasal bursts through a high-Q bandpass
+  duck(ctx, t, out) {
+    const one = (t0) => {
+      const d = 0.15;
+      const o = ctx.createOscillator(); o.type = "sawtooth";
+      ramp(o.frequency, t0, [[0, 300], [d, 188]]);
+      // narrow bandpass loses a lot of level, so drive it harder to match the others
+      const f = filt(ctx, 1500, 6);
+      const g = shape(ctx, t0, [[0, 0.0001], [0.015, 2.2], [d, 0.0001]]);
+      o.connect(f); f.connect(g); g.connect(out);
+      o.start(t0); o.stop(t0 + d);
+    };
+    one(t); one(t + 0.21); one(t + 0.42);
+    return 0.62;
+  },
+  // the bleat is a strong ~14Hz tremolo on a nasal tone
+  sheep(ctx, t, out) {
+    const d = 1.1;
+    const o = ctx.createOscillator(); o.type = "sawtooth";
+    ramp(o.frequency, t, [[0, 300], [0.2, 288], [d, 232]]);
+    const g = shape(ctx, t, [[0, 0.0001], [0.12, 0.45], [0.85, 0.4], [d, 0.0001]]);
+    const trem = ctx.createOscillator(); trem.frequency.value = 14;
+    const tg = ctx.createGain(); tg.gain.value = 0.22;
+    trem.connect(tg); tg.connect(g.gain);
+    const f1 = filt(ctx, 900, 5), f2 = filt(ctx, 1800, 6);
+    o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g); g.connect(out);
+    o.start(t); o.stop(t + d); trem.start(t); trem.stop(t + d);
+    return d;
+  },
+  // low rumble + lowpassed noise, amplitude-modulated into a growl
+  lion(ctx, t, out) {
+    const d = 1.6;
+    const o = ctx.createOscillator(); o.type = "sawtooth";
+    ramp(o.frequency, t, [[0, 92], [0.4, 78], [d, 57]]);
+    const n = noiseSource(ctx, d);
+    const lp = filt(ctx, 420, 1, "lowpass");
+    const of = filt(ctx, 300, 2);
+    const g = shape(ctx, t, [[0, 0.0001], [0.3, 0.6], [1.15, 0.5], [d, 0.0001]]);
+    const growl = ctx.createOscillator(); growl.frequency.value = 26;
+    const gg = ctx.createGain(); gg.gain.value = 0.18;
+    growl.connect(gg); gg.connect(g.gain);
+    o.connect(of); of.connect(g); n.connect(lp); lp.connect(g); g.connect(out);
+    o.start(t); o.stop(t + d); n.start(t); n.stop(t + d); growl.start(t); growl.stop(t + d);
+    return d;
+  },
+  // pure filtered noise — the one that sounds genuinely real
+  snake(ctx, t, out) {
+    const d = 1.4;
+    const n = noiseSource(ctx, d);
+    const hp = filt(ctx, 2200, 0.7, "highpass");
+    const f = filt(ctx, 5000, 1.1);
+    ramp(f.frequency, t, [[0, 4200], [0.6, 6200], [d, 4600]]);
+    const g = shape(ctx, t, [[0, 0.0001], [0.15, 0.32], [1.05, 0.28], [d, 0.0001]]);
+    n.connect(hp); hp.connect(f); f.connect(g); g.connect(out);
+    n.start(t); n.stop(t + d);
+    return d;
+  },
+  // quick "ooh ooh" chirps then two falling "ah ah"
+  monkey(ctx, t, out) {
+    const chirp = (t0, f0, f1, d) => {
+      const o = ctx.createOscillator(); o.type = "square";
+      ramp(o.frequency, t0, [[0, f0], [d, f1]]);
+      const f = filt(ctx, 1600, 4);
+      const g = shape(ctx, t0, [[0, 0.0001], [0.02, 1.3], [d, 0.0001]]);
+      o.connect(f); f.connect(g); g.connect(out);
+      o.start(t0); o.stop(t0 + d);
+    };
+    chirp(t, 700, 1100, 0.1); chirp(t + 0.14, 760, 1150, 0.1); chirp(t + 0.28, 700, 1050, 0.1);
+    chirp(t + 0.46, 950, 600, 0.13); chirp(t + 0.64, 900, 560, 0.13);
+    return 0.85;
+  },
+};
+
+function playAnimalSound(a) {
+  const ctx = getAudio();
+  const synth = ANIMAL_SYNTH[a.name];
+  if (!state.sound) return;
+  if (!ctx || !synth) { speak(a.sound, { pitch: a.pitch, rate: a.rate }); return; }
+  let dur;
+  try {
+    const master = ctx.createGain();
+    master.gain.value = 0.9;
+    master.connect(ctx.destination);
+    dur = synth(ctx, ctx.currentTime + 0.05, master);
+  } catch (_) {
+    speak(a.sound, { pitch: a.pitch, rate: a.rate });   // synth failed, still make a noise
+    return;
+  }
+  // hold the mic while the animal is sounding, same as when we speak
+  suspendListening();
+  setTimeout(resumeListening, dur * 1000 + 350);
 }
 
 /* ================= confetti ================= */
@@ -732,7 +908,8 @@ function doAnimal(a, praise) {
   const el = $(`animal-${a.name}`);
   if (el) { el.classList.remove("wiggling"); void el.offsetWidth; el.classList.add("wiggling"); }
   celebrate();
-  speak(`${praise ? pick(PRAISE) + " " : ""}The ${a.name} says... ${a.sound}`, { pitch: a.pitch, rate: a.rate });
+  // announce in the friendly voice, then play the real synthesised sound
+  speak(`${praise ? pick(PRAISE) + " " : ""}The ${a.name} says...`, { onend: () => playAnimalSound(a) });
 }
 function doLetter(a, praise) {
   state.letter = a;
