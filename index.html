@@ -70,18 +70,20 @@
     background: linear-gradient(180deg, #5CBF5C00, #4BAF4B 30%); z-index: 5;
   }
   .dock button {
-    border: 3px solid transparent; border-radius: 18px; padding: 9px 6px;
-    color: #fff; font-size: 12px; font-weight: 700;
+    border: 3px solid transparent; border-radius: 18px; padding: 9px 4px;
+    color: #fff; font-size: clamp(9px, 2.7vw, 12px); font-weight: 700;
     display: flex; flex-direction: column; align-items: center; gap: 2px;
-    min-width: 58px; flex: 0 1 76px;
+    /* six buttons must fit a 320px phone without pushing the page wide */
+    min-width: 0; flex: 1 1 0; max-width: 76px;
   }
   .dock button.active { border-color: #fff; }
-  .dock .emoji { font-size: 26px; }
+  .dock .emoji { font-size: clamp(19px, 6vw, 26px); }
   .d-coin    { background: #ED1C24; box-shadow: 0 5px 0 #9B1B26; }
   .d-dice    { background: #39B54A; box-shadow: 0 5px 0 #256B31; }
   .d-number  { background: #4B4EA0; box-shadow: 0 5px 0 #33356E; }
   .d-joke    { background: #FFD200; box-shadow: 0 5px 0 #C49E12; color: #5a4500; }
   .d-animals { background: #F7941D; box-shadow: 0 5px 0 #B56A0A; }
+  .d-letters { background: #00AEEF; box-shadow: 0 5px 0 #0678A3; }
 
   /* coin */
   .coin-area { height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
@@ -154,6 +156,25 @@
   .animal-btn .label { font-size: clamp(11px, 3.2vw, 13px); font-weight: 700; color: #1D3B6B; }
   @media (max-width: 360px) { .animal-grid { gap: 7px; } }
 
+  /* alphablocks */
+  .letter-grid {
+    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 7px; width: 100%; max-width: 380px;
+  }
+  .letter-btn {
+    border: none; border-radius: 12px; padding: 8px 2px 6px; min-width: 0;
+    color: #fff; font-size: clamp(17px, 5vw, 23px); font-weight: 700;
+    text-transform: uppercase; box-shadow: 0 4px 0 #00000030;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .letter-btn.wiggling { animation: wiggle .7s; }
+  .letter-card {
+    color: #fff; border-radius: 22px; padding: 10px 30px; font-size: 84px; font-weight: 700;
+    text-transform: uppercase; box-shadow: 0 6px 0 #00000030;
+    display: inline-flex; align-items: center; gap: 14px;
+    text-shadow: 0 2px 0 #00000025; animation: bounceIn .4s;
+  }
+
   .result { font-size: 32px; font-weight: 700; min-height: 40px; }
   .result.pop { animation: bounceIn .4s; }
   .subtle { font-size: 15px; opacity: .7; }
@@ -200,6 +221,7 @@
   <button class="d-number"  id="dockNumber"><span class="emoji">🔢</span>Number</button>
   <button class="d-joke"    id="dockJoke"><span class="emoji">😄</span>Joke</button>
   <button class="d-animals" id="dockAnimals"><span class="emoji">🐮</span>Animals</button>
+  <button class="d-letters" id="dockLetters"><span class="emoji">🔤</span>Letters</button>
 </nav>
 
 <script>
@@ -208,6 +230,7 @@
 /* ================= data ================= */
 const JOKES = [
   { q: "Why did the banana go to the doctor?", a: "Because it wasn't peeling well!" },
+  { q: "Why did the banana wear sunscreen?", a: "Because it was starting to peel!" },
   { q: "What do you call a dinosaur that is sleeping?", a: "A dino-SNORE!" },
   { q: "Why did the cookie go to the hospital?", a: "Because it felt crummy!" },
   { q: "What do you call a bear with no teeth?", a: "A gummy bear!" },
@@ -232,6 +255,22 @@ const ANIMALS = [
   { name: "monkey", emoji: "🐵", names: ["monkey","ooh"],               sound: "Ooh ooh ooh, ah ah ah!", pitch: 1.5, rate: 1.35 },
 ];
 
+/* Alphablocks: each letter with its phonic sound (how it's said in Letters and
+   Sounds / the show) and a "___ is for ___" word.
+   NOTE: the colours below are a pleasant repeating palette, NOT the show's
+   official per-character colours. */
+const ALPHA = [
+  ["a", "ah",   "apple"],   ["b", "buh",  "ball"],    ["c", "cuh",  "cat"],
+  ["d", "duh",  "dog"],     ["e", "eh",   "egg"],     ["f", "fff",  "fish"],
+  ["g", "guh",  "goat"],    ["h", "huh",  "hat"],     ["i", "ih",   "igloo"],
+  ["j", "juh",  "jam"],     ["k", "kuh",  "kite"],    ["l", "lll",  "lion"],
+  ["m", "mmm",  "moon"],    ["n", "nnn",  "nest"],    ["o", "oh",   "octopus"],
+  ["p", "puh",  "pig"],     ["q", "kwuh", "queen"],   ["r", "rrr",  "rabbit"],
+  ["s", "sss",  "sun"],     ["t", "tuh",  "tree"],    ["u", "uh",   "umbrella"],
+  ["v", "vvv",  "van"],     ["w", "wuh",  "window"],  ["x", "ks",   "fox"],
+  ["y", "yuh",  "yellow"],  ["z", "zzz",  "zebra"],
+].map(([letter, sound, word], i) => ({ letter, sound, word, colour: null, i }));
+
 /* Numberblocks canonical scheme: 1 red, 2 orange, 3 yellow, 4 green, 5 cyan,
    6 indigo, 7 rainbow, 8 magenta, 9 grey shades, 10 white with red border */
 const NBC = { 1:"#ED1C24", 2:"#F7941D", 3:"#FFD200", 4:"#39B54A", 5:"#00AEEF", 6:"#4B4EA0", 8:"#EC008C" };
@@ -245,7 +284,12 @@ const NUM_WORDS = { one:1,two:2,to:2,too:2,three:3,four:4,for:4,five:5,six:6,sev
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 const wordsToNums = (t) => t.split(/\s+/).map((w) => NUM_WORDS[w] !== undefined ? NUM_WORDS[w] : w).join(" ");
+/* Speech gives us "minus five", and the tidy-up strips real "-" signs, so put
+   the sign back on: "minus 5" / "negative 5" -> "-5". */
+const applySigns = (t) => t.replace(/\b(?:minus|negative|below zero)\s+(\d+)/g, "-$1");
 const $ = (id) => document.getElementById(id);
+// asking for one specific number shows "the number 10", not "between 10 and 10"
+const rangeLabel = (a, b) => (a === b ? `the number ${a}` : `between ${a} and ${b}`);
 
 function blockStyle(n, i) {
   if (n === 7) return { bg: RAINBOW7[i % 7], border: null };
@@ -253,6 +297,9 @@ function blockStyle(n, i) {
   if (n === 10) return { bg: "#FFFFFF", border: NBC[1] };
   return { bg: NBC[n] || VARIETY[(Math.abs(n) - 1) % 10], border: null };
 }
+const ALPHA_PALETTE = ["#ED1C24", "#F7941D", "#FFD200", "#39B54A", "#00AEEF", "#4B4EA0", "#92278F", "#EC008C"];
+const letterColour = (i) => ALPHA_PALETTE[i % ALPHA_PALETTE.length];
+
 function mainColour(n) {
   if (n === 7) return RAINBOW7[3];
   if (n === 9) return GREYS9[2];
@@ -267,7 +314,17 @@ const state = {
   running: false,     // actual: a recognition session is live right now
   speaking: false,    // the app is talking, so the mic is held off
   muted: false, blocked: false, coinSpin: 0, dice: [], lastSides: 6,
-  numRange: [1, 10], joke: null, lastJoke: -1,
+  numRange: [1, 10], joke: null, lastJoke: -1, letter: null,
+};
+
+/* Speech hears letter NAMES, not letters: "letter bee" means B. */
+const LETTER_WORDS = {
+  ay: "a", eh: "a", bee: "b", be: "b", cee: "c", sea: "c", see: "c", dee: "d",
+  ee: "e", ef: "f", eff: "f", gee: "g", aitch: "h", haitch: "h", eye: "i",
+  jay: "j", kay: "k", el: "l", ell: "l", em: "m", emm: "m", en: "n", enn: "n",
+  oh: "o", owe: "o", pea: "p", pee: "p", cue: "q", queue: "q", kew: "q",
+  are: "r", ar: "r", ess: "s", es: "s", tea: "t", tee: "t", you: "u", yew: "u",
+  vee: "v", ex: "x", ecks: "x", why: "y", wye: "y", zed: "z", zee: "z",
 };
 
 /* ================= speech (out) ================= */
@@ -442,7 +499,7 @@ function dieHTML(d, i, count, rolling) {
 function renderStage() {
   const s = $("stage");
   document.querySelectorAll(".dock button").forEach((b) => b.classList.remove("active"));
-  const dockMap = { coin: "dockCoin", dice: "dockDice", number: "dockNumber", joke: "dockJoke", animals: "dockAnimals" };
+  const dockMap = { coin: "dockCoin", dice: "dockDice", number: "dockNumber", joke: "dockJoke", animals: "dockAnimals", letters: "dockLetters" };
   if (dockMap[state.mode]) $(dockMap[state.mode]).classList.add("active");
 
   if (state.mode === "home") {
@@ -480,9 +537,10 @@ function renderStage() {
   if (state.mode === "number") {
     s.innerHTML = `
       <div id="numWrap" style="min-height:190px;display:flex;align-items:center;justify-content:center"></div>
-      <div class="subtle" id="numRangeLabel">between ${state.numRange[0]} and ${state.numRange[1]}</div>
+      <div class="subtle" id="numRangeLabel">${rangeLabel(state.numRange[0], state.numRange[1])}</div>
       <div class="row">
         <button class="action a-indigo" onclick="doNumber(1,10,false)">1–10</button>
+        <button class="action a-red" onclick="doNumber(-10,10,false)">−10–10</button>
         <button class="action a-cyan" onclick="doNumber(1,100,false)">1–100</button>
       </div>`;
   }
@@ -494,6 +552,22 @@ function renderStage() {
       <div style="font-size:22px;font-weight:700">${j ? j.q : ""}</div>
       <div class="result" id="punchline" style="font-size:24px;color:#ED1C24;min-height:34px">...</div>
       <button class="action a-yellow" onclick="doJoke(false)">😄 Another one!</button>`;
+  }
+
+  if (state.mode === "letters") {
+    const a = state.letter;
+    let grid = "";
+    for (const L of ALPHA) {
+      grid += `<button class="letter-btn" id="letter-${L.letter}" style="background:${letterColour(L.i)}"
+                 onclick="doLetterByName('${L.letter}', false)">${L.letter}</button>`;
+    }
+    s.innerHTML = `
+      <div id="letterWrap" style="min-height:120px;display:flex;align-items:center;justify-content:center">
+        ${a ? `<div class="letter-card" style="background:${letterColour(a.i)}">${a.letter}${faceHTML(2, false)}</div>` : ""}
+      </div>
+      <div style="font-size:19px;font-weight:700">${a ? `${a.letter.toUpperCase()} is for ${a.word}!` : "Tap a letter! 🔤"}</div>
+      <div class="letter-grid">${grid}</div>
+      <div class="subtle">Or say “letter B”</div>`;
   }
 
   if (state.mode === "animals") {
@@ -591,7 +665,7 @@ function doNumber(min = 1, max = 10, praise) {
   if (min > max) [min, max] = [max, min];
   state.busy = true; state.numRange = [min, max];
   if (state.mode !== "number") setMode("number");
-  $("numRangeLabel").textContent = `between ${min} and ${max}`;
+  $("numRangeLabel").textContent = rangeLabel(min, max);
   let ticks = 0;
   const iv = setInterval(() => {
     $("numWrap").innerHTML = `<div class="num-spin">${randInt(min, max)}</div>`;
@@ -601,16 +675,44 @@ function doNumber(min = 1, max = 10, praise) {
       const final = randInt(min, max);
       $("numWrap").innerHTML = blockFigureHTML(final);
       celebrate();
-      speak(`${praise ? pick(PRAISE) + " " : ""}Your number is ${final}!`);
+      // say "negative five", not "dash five"
+      const spoken = final < 0 ? `negative ${Math.abs(final)}` : `${final}`;
+      speak(`${praise ? pick(PRAISE) + " " : ""}Your number is ${spoken}!`);
       state.busy = false;
     }
   }, 90);
 }
 
-function doJoke(praise) {
+/* "banana joke" / "joke about cows" -> find a joke on that subject.
+   Strips the asking words so what's left is the topic itself. */
+const JOKE_STOPWORDS = /^(joke|jokes|joker|tell|telling|another|about|funny|say|said|the|one|more|please|can|could|you|your|give|make|want|know|any|other|new|and|for|with|that|this|have|hear)$/;
+function findJokeByTopic(text) {
+  const words = text.split(/\s+/).filter((w) => w.length > 2 && !JOKE_STOPWORDS.test(w));
+  for (const w of words) {
+    // singular/plural tolerance: "bananas" still finds the banana joke
+    const stem = w.replace(/(ies|es|s)$/, "");
+    if (stem.length < 3) continue;
+    const hits = [];
+    JOKES.forEach((j, i) => {
+      if ((j.q + " " + j.a).toLowerCase().includes(stem)) hits.push(i);
+    });
+    // more than one match (e.g. two banana jokes) -> don't repeat the last one
+    if (hits.length) {
+      const fresh = hits.filter((i) => i !== state.lastJoke);
+      return pick(fresh.length ? fresh : hits);
+    }
+  }
+  return -1;
+}
+
+function doJoke(praise, forceIndex) {
   if (state.busy) return;
   let i;
-  do { i = Math.floor(Math.random() * JOKES.length); } while (i === state.lastJoke);
+  if (Number.isInteger(forceIndex) && forceIndex >= 0 && JOKES[forceIndex]) {
+    i = forceIndex;
+  } else {
+    do { i = Math.floor(Math.random() * JOKES.length); } while (i === state.lastJoke && JOKES.length > 1);
+  }
   state.lastJoke = i;
   state.joke = JOKES[i];
   state.busy = true;
@@ -632,6 +734,21 @@ function doAnimal(a, praise) {
   celebrate();
   speak(`${praise ? pick(PRAISE) + " " : ""}The ${a.name} says... ${a.sound}`, { pitch: a.pitch, rate: a.rate });
 }
+function doLetter(a, praise) {
+  state.letter = a;
+  setMode("letters");                       // re-render so the big card updates
+  const el = $(`letter-${a.letter}`);
+  if (el) { el.classList.remove("wiggling"); void el.offsetWidth; el.classList.add("wiggling"); }
+  celebrate();
+  // "B says buh. B is for ball!"
+  speak(`${praise ? pick(PRAISE) + " " : ""}${a.letter} says ${a.sound}. ${a.letter} is for ${a.word}!`,
+        { rate: .8 });
+}
+function doLetterByName(ch, praise) {
+  const a = ALPHA.find((x) => x.letter === String(ch).toLowerCase());
+  if (a) doLetter(a, praise);
+}
+
 function doAnimalByName(name, praise) {
   const a = ANIMALS.find((x) => x.name === name);
   if (a) doAnimal(a, praise);
@@ -639,21 +756,35 @@ function doAnimalByName(name, praise) {
 
 /* ================= voice command parser ================= */
 function handleCommand(raw) {
-  const text = wordsToNums(raw.toLowerCase().replace(/[^a-z0-9\s]/g, " "));
+  const text = applySigns(wordsToNums(raw.toLowerCase().replace(/[^a-z0-9\s]/g, " ")));
   setBubble(`I heard: “${raw}”`);
+
+  // Jokes are matched BEFORE animals, so "tell me a duck joke" tells the duck
+  // joke instead of quacking, and "banana joke" finds the banana one.
+  if (/\bjoke\b|funny/.test(text)) return doJoke(true, findJokeByTopic(text));
+  if (state.mode === "joke" && /\banother\b|\bagain\b|more/.test(text)) return doJoke(true);
+
+  // "letter B" / "letter bee" -> that Alphablock
+  const lm = text.match(/\bletter\s+([a-z]+)\b/);
+  if (lm) {
+    const ch = lm[1].length === 1 ? lm[1] : LETTER_WORDS[lm[1]];
+    if (ch) return doLetterByName(ch, true);
+  }
+  if (/\bletters?\b|\balphabet\b|alphablock/.test(text)) {
+    setMode("letters");
+    return speak("Which letter? Say letter A, or tap one!");
+  }
 
   const animal = ANIMALS.find((a) => a.names.some((nm) => new RegExp(`\\b${nm}\\b`).test(text)));
   if (animal) return doAnimal(animal, true);
   if (/\banimal\b/.test(text)) { setMode("animals"); return speak("Which animal? Say cow, dog, cat, duck, sheep, lion, snake, or monkey!"); }
 
-  if (/\bjoke\b|funny/.test(text)) return doJoke(true);
-  if (state.mode === "joke" && /\banother\b|\bagain\b|more/.test(text)) return doJoke(true);
-
   if (/\bflip\b|\bcoin\b|\btoss\b|heads|tails/.test(text)) return doCoin(true);
 
   if (/\broll\b|\bdice\b|\bdie\b/.test(text)) {
     let sides = 6, count = 1;
-    const sidedMatch = text.match(/(\d+)\s*(sided|side|sides|dimensional|d)\b/);
+    const sidedMatch = text.match(/(\d+)\s*(?:sided|side|sides|dimensional|d)\b/) ||
+                       text.match(/\bd\s?(\d+)\b/);          // "d20", "d 20"
     if (sidedMatch) sides = parseInt(sidedMatch[1], 10);
     const countMatch = text.match(/roll\s+(\d+)\s+dice/) || text.match(/(\d+)\s+dice/);
     if (countMatch && !(`${countMatch[1]}` === `${sides}` && sidedMatch)) count = parseInt(countMatch[1], 10);
@@ -661,11 +792,18 @@ function handleCommand(raw) {
     return doDice(count, sides, true);
   }
 
-  if (/\bnumber\b|\bcount\b|\bgenerate\b|\brandom\b|give me|\bchoose\b/.test(text)) {
+  if (/\bnumber\b|\bcount\b|\bgenerate\b|\brandom\b|give me|\bchoose\b|\bshow\b/.test(text)) {
     const between = text.match(/between\s+(-?\d+)\s+and\s+(-?\d+)/);
     if (between) return doNumber(parseInt(between[1], 10), parseInt(between[2], 10), true);
+    // "generate number 10" / "show me number 7" -> that exact number, not a random one
+    const exact = text.match(/\bnumber\s+(-?\d+)\b/) ||
+                  text.match(/\b(?:show|generate|make|give|do)\s+(?:me\s+)?(?:the\s+)?(-?\d+)\b/);
+    if (exact) { const n = parseInt(exact[1], 10); return doNumber(n, n, true); }
+    // "a negative number" / "a minus number" -> below zero only
+    if (/\bnegative\b|\bminus\b/.test(text)) return doNumber(-10, -1, true);
     if (/big/.test(text)) return doNumber(1, 100, true);
-    return doNumber(1, 10, true);
+    if (/\bpositive\b|\bcounting\b/.test(text)) return doNumber(1, 10, true);
+    return doNumber(-10, 10, true);
   }
 
   if (/\bagain\b|\bmore\b|one more/.test(text)) {
@@ -674,6 +812,10 @@ function handleCommand(raw) {
     if (state.mode === "number") return doNumber(state.numRange[0], state.numRange[1], true);
     if (state.mode === "joke") return doJoke(true);
   }
+
+  // just shouting a number ("eight!") shows that Numberblock
+  const bare = text.match(/^\s*(-?\d{1,3})\s*$/);
+  if (bare) { const n = parseInt(bare[1], 10); return doNumber(n, n, true); }
 
   if (/\bhello\b|\bhi\b|\bhiya\b/.test(text)) return speak("Hello Elvin! What shall we play?");
   if (/\bhome\b|\bstop\b|go back/.test(text)) { setMode("home"); return speak("Okay! Pick a game!"); }
@@ -814,6 +956,7 @@ $("dockDice").addEventListener("click", () => doDice(1, 6, false));
 $("dockNumber").addEventListener("click", () => doNumber(1, 10, false));
 $("dockJoke").addEventListener("click", () => doJoke(false));
 $("dockAnimals").addEventListener("click", () => setMode("animals"));
+$("dockLetters").addEventListener("click", () => setMode("letters"));
 
 renderStage();
 </script>
