@@ -453,19 +453,56 @@ function shape(ctx, t, pts) {
   return g;
 }
 
-const ANIMAL_SYNTH = {
-  // low larynx tone + two vocal-tract formants, with a rise-and-fall pitch
-  cow(ctx, t, out) {
-    const d = 1.35;
-    const o = ctx.createOscillator(); o.type = "sawtooth";
-    ramp(o.frequency, t, [[0, 145], [0.25, 182], [0.85, 168], [d, 104]]);
-    const vib = ctx.createOscillator(); vib.frequency.value = 5.5;
-    const vg = ctx.createGain(); vg.gain.value = 7;
+/* A voice = one buzzing source through 3 parallel formant filters.
+   Sweeping the formants IS the animal: a moo is a nasal "mmm" (mouth shut,
+   upper formants muted) opening into "ooo" (F1 low, F2 low); a meow is
+   "m -> ee-ah -> ow" (F2 leaps up, then everything closes down again). */
+function formantVoice(ctx, t, d, opts, out) {
+  const o = ctx.createOscillator();
+  o.type = opts.wave || "sawtooth";
+  ramp(o.frequency, t, opts.f0);
+  const g = shape(ctx, t, opts.env);
+  for (const F of opts.formants) {
+    const bpf = ctx.createBiquadFilter();
+    bpf.type = "bandpass";
+    bpf.Q.value = F.q;
+    ramp(bpf.frequency, t, F.f);
+    const fg = ctx.createGain();
+    if (F.gEnv) ramp(fg.gain, t, F.gEnv); else fg.gain.value = F.g;
+    o.connect(bpf); bpf.connect(fg); fg.connect(g);
+  }
+  g.connect(out);
+  o.start(t); o.stop(t + d);
+  if (opts.vibrato) {
+    const vib = ctx.createOscillator(); vib.frequency.value = opts.vibrato[0];
+    const vg = ctx.createGain(); vg.gain.value = opts.vibrato[1];
     vib.connect(vg); vg.connect(o.frequency);
-    const g = shape(ctx, t, [[0, 0.0001], [0.15, 0.55], [0.95, 0.5], [d, 0.0001]]);
-    const f1 = filt(ctx, 560, 4), f2 = filt(ctx, 1050, 7);
-    o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g); g.connect(out);
-    o.start(t); o.stop(t + d); vib.start(t); vib.stop(t + d);
+    vib.start(t); vib.stop(t + d);
+  }
+  return { osc: o, gain: g };
+}
+
+const ANIMAL_SYNTH = {
+  /* "mmm-OOO-oo": pitch ~115Hz rising to ~150 then falling away to 80.
+     Mouth starts shut (F2/F3 gains near zero) and opens over ~0.35s.
+     F1 ~300 + F2 ~800 is the "oo" vowel — the old 560/1050 was an "ah",
+     which is why it sounded like a voice rather than a cow. */
+  cow(ctx, t, out) {
+    const d = 1.75;
+    formantVoice(ctx, t, d, {
+      wave: "sawtooth",
+      f0: [[0, 112], [0.35, 150], [1.05, 140], [d, 80]],
+      env: [[0, 0.0001], [0.2, 1.35], [1.25, 1.2], [d, 0.0001]],   // 3 narrow formants cost level
+      vibrato: [4.5, 4],
+      formants: [
+        { f: [[0, 250], [0.35, 330], [1.2, 310], [d, 270]], q: 8,
+          gEnv: [[0, 0.9], [0.35, 1.0], [d, 0.75]] },
+        { f: [[0, 620], [0.35, 830], [1.2, 790], [d, 690]], q: 10,
+          gEnv: [[0, 0.08], [0.35, 0.85], [1.2, 0.8], [d, 0.4]] },   // mouth opening
+        { f: [[0, 2300], [d, 2150]], q: 12,
+          gEnv: [[0, 0.02], [0.4, 0.16], [d, 0.05]] },
+      ],
+    }, out);
     return d;
   },
   // two barks: noise burst + fast downward pitch snap
@@ -484,16 +521,27 @@ const ANIMAL_SYNTH = {
     bark(t); bark(t + 0.3);
     return 0.55;
   },
-  // rising-then-falling cry with a sweeping formant = "me-ow"
+  /* "me-ow": nasal /m/ (F2 muted) -> open /ea/ (F1 and F2 both leap up)
+     -> closing /ow/ (everything falls). One static filter could never make
+     that shape, which is what made the old one sound like a synth beep. */
   cat(ctx, t, out) {
-    const d = 0.8;
-    const o = ctx.createOscillator(); o.type = "sawtooth";
-    ramp(o.frequency, t, [[0, 480], [0.18, 820], [0.45, 700], [d, 515]]);
-    const f = filt(ctx, 900, 5);
-    ramp(f.frequency, t, [[0, 850], [0.18, 1900], [d, 750]]);
-    const g = shape(ctx, t, [[0, 0.0001], [0.08, 1.0], [0.6, 0.85], [d, 0.0001]]);
-    o.connect(f); f.connect(g); g.connect(out);
-    o.start(t); o.stop(t + d);
+    const d = 0.9;
+    formantVoice(ctx, t, d, {
+      wave: "sawtooth",
+      // pitch must sit BELOW F1 or the vowel never forms — this is what made
+      // the old meow a beep: at f0 880Hz there was no harmonic to fill F1.
+      f0: [[0, 380], [0.14, 600], [0.5, 520], [d, 330]],
+      env: [[0, 0.0001], [0.07, 0.85], [0.6, 0.66], [d, 0.0001]],
+      vibrato: [5.5, 8],
+      formants: [
+        { f: [[0, 330], [0.2, 900], [0.55, 760], [d, 430]], q: 7,
+          gEnv: [[0, 0.55], [0.2, 1.0], [d, 0.65]] },
+        { f: [[0, 1150], [0.2, 2300], [0.6, 1750], [d, 980]], q: 9,
+          gEnv: [[0, 0.07], [0.2, 0.9], [0.6, 0.7], [d, 0.22]] },    // mouth opening
+        { f: [[0, 3100], [d, 2750]], q: 12,
+          gEnv: [[0, 0.02], [0.22, 0.2], [d, 0.05]] },
+      ],
+    }, out);
     return d;
   },
   // three tight nasal bursts through a high-Q bandpass
