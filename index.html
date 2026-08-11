@@ -1068,7 +1068,12 @@ if (!window.isSecureContext && location.protocol !== "file:") {
   setBubble("🔒 Open this page over https:// for voice");
 } else if (!SR) {
   state.blocked = true;
-  setBubble("🔇 Voice needs Chrome, Edge or Safari — buttons still work!");
+  // On iOS every browser is WebKit underneath, but only Safari itself exposes
+  // speech recognition — Chrome/Firefox/Edge for iPhone simply do not have it.
+  const iOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+  const iOSOther = iOS && /CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
+  setBubble(iOSOther ? "🔇 Open this page in Safari for voice"
+                     : "🔇 Voice needs Chrome, Edge or Safari — buttons still work!");
 } else {
   recog = new SR();
   recog.lang = "en-GB";
@@ -1153,18 +1158,45 @@ function resumeListening() {
   micUI();
 }
 
-// Listening is ON by default — the mic button is just a mute toggle.
+/* The mic button is a START/STOP toggle driven by what is ACTUALLY happening,
+   not by a mute flag. On a phone the browser refuses to start listening until
+   the user touches the screen, so listening is never running at load — and a
+   plain mute-toggle would turn OFF on that all-important first tap, which is
+   exactly the wrong way round. Tapping must always be the thing that starts it. */
 $("micBtn").addEventListener("click", () => {
-  state.muted = !state.muted;
-  if (state.muted) { stopListening(); setBubble(""); }
-  else { state.blocked = false; startListening(); }
+  const isOn = state.running || state.speaking;
+  if (isOn) {
+    state.muted = true;
+    stopListening();
+    setBubble("🔇 Listening off — tap the mic to start");
+  } else {
+    state.muted = false;
+    state.blocked = false;                 // let a denied permission be retried
+    setBubble("👂 Listening… say something!");
+    startListening();
+  }
   micUI();
 });
 
 // Start immediately; some platforms (iPhone especially) only allow the
 // microphone after the first touch, so also retry on every interaction.
 startListening();
-document.addEventListener("pointerdown", () => startListening());
+/* Any touch retries listening, because phones refuse it before a gesture.
+   BUT the mic button must be excluded: pointerdown fires before click, so this
+   would start listening a moment before the button's own handler ran, and the
+   button would then see it running and immediately switch it back off. */
+document.addEventListener("pointerdown", (e) => {
+  if (e.target && e.target.closest && e.target.closest("#micBtn")) return;
+  startListening();
+});
+
+// If it never got going (phones block it until a gesture), say so plainly
+// instead of leaving a dead mic with no explanation.
+setTimeout(() => {
+  if (!state.running && !state.muted && !$("bubble").textContent) {
+    setBubble("🎤 Tap the mic to talk to me!");
+  }
+}, 1500);
 
 /* ================= misc UI ================= */
 $("soundBtn").addEventListener("click", () => {
