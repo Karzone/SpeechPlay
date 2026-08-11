@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Elvin's Talking Play Machine</title>
+<meta name="theme-color" content="#7EC9F5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Play Machine">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  html { background: #7EC9F5; }
+  body {
+    min-height: 100vh; min-height: 100dvh; overflow-x: hidden; position: relative;
+    background: linear-gradient(180deg, #7EC9F5 0%, #BDE7FF 55%, #DFF6FF 78%, #7ED17E 78%, #5CBF5C 100%);
+    background-attachment: fixed;
+    font-family: 'Fredoka', 'Comic Sans MS', 'Segoe UI', sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 12px 12px 130px;
+    /* kid-proofing: no accidental text selection, no pull-to-refresh mid-game */
+    -webkit-user-select: none; user-select: none;
+    overscroll-behavior-y: contain;
+  }
+  button { font-family: inherit; touch-action: manipulation; cursor: pointer; }
+  button:active { transform: translateY(3px); }
+
+  header { width: 100%; max-width: 460px; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .title { font-size: clamp(20px, 5.5vw, 30px); font-weight: 700; color: #1D3B6B; text-shadow: 0 2px 0 #ffffff90; }
+  .round { width: 46px; height: 46px; border-radius: 50%; border: none; font-size: 20px; box-shadow: 0 4px 0 #00000025; }
+
+  .mic-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 4px; }
+  #micBtn {
+    position: relative; width: 74px; height: 74px; border-radius: 50%; border: 4px solid #fff;
+    background: #1D3B6B; color: #fff; font-size: 30px; box-shadow: 0 6px 0 #0F2447;
+  }
+  #micBtn.on { background: #E63946; box-shadow: 0 0 0 8px #E6394633, 0 6px 0 #9B1B26; animation: pulse 1.2s infinite; }
+  #bubble {
+    background: #fff; color: #1D3B6B; border-radius: 18px; padding: 8px 16px;
+    font-size: 15px; font-weight: 600; box-shadow: 0 3px 8px #0002; max-width: 340px;
+    min-height: 22px; text-align: center;
+  }
+  #bubble:empty { display: none; }
+
+  .hints { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 440px; }
+  .chip { background: #ffffffd9; color: #1D3B6B; border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; box-shadow: 0 2px 4px #0002; }
+
+  #stage {
+    background: #FFFDF6; border-radius: 30px; width: 100%; max-width: 460px; min-height: 300px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 22px 16px; margin: 10px 0;
+    box-shadow: 0 8px 0 #1D3B6B33, 0 16px 32px #0004; color: #1D3B6B;
+    text-align: center; position: relative;
+  }
+
+  .action { border: none; border-radius: 20px; padding: 14px 28px; font-size: 20px; font-weight: 700; color: #fff; }
+  .a-red    { background: #ED1C24; box-shadow: 0 5px 0 #9B1B26; }
+  .a-green  { background: #39B54A; box-shadow: 0 5px 0 #256B31; }
+  .a-indigo { background: #4B4EA0; box-shadow: 0 5px 0 #33356E; }
+  .a-cyan   { background: #00AEEF; box-shadow: 0 5px 0 #0678A3; }
+  .a-yellow { background: #FFD200; box-shadow: 0 5px 0 #C49E12; color: #5a4500; }
+
+  .dock {
+    position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: center;
+    gap: 8px; padding: 12px 8px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, #5CBF5C00, #4BAF4B 30%); z-index: 5;
+  }
+  .dock button {
+    border: 3px solid transparent; border-radius: 18px; padding: 9px 6px;
+    color: #fff; font-size: 12px; font-weight: 700;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    min-width: 58px; flex: 0 1 76px;
+  }
+  .dock button.active { border-color: #fff; }
+  .dock .emoji { font-size: 26px; }
+  .d-coin    { background: #ED1C24; box-shadow: 0 5px 0 #9B1B26; }
+  .d-dice    { background: #39B54A; box-shadow: 0 5px 0 #256B31; }
+  .d-number  { background: #4B4EA0; box-shadow: 0 5px 0 #33356E; }
+  .d-joke    { background: #FFD200; box-shadow: 0 5px 0 #C49E12; color: #5a4500; }
+  .d-animals { background: #F7941D; box-shadow: 0 5px 0 #B56A0A; }
+
+  /* coin */
+  .coin-area { height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+  .toss-wrap { perspective: 800px; }
+  .toss-wrap.tossing { animation: toss 1.5s cubic-bezier(.33,.6,.4,1) both; }
+  .coin3d { width: 130px; height: 130px; position: relative; transform-style: preserve-3d; transition: transform 1.5s cubic-bezier(.2,.75,.35,1); }
+  .coin-face {
+    position: absolute; inset: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 60px; font-weight: 700; backface-visibility: hidden;
+    box-shadow: inset 0 0 0 8px #00000012, 0 8px 16px #0003;
+  }
+  .coin-h { background: radial-gradient(circle at 35% 30%, #FFE87A, #F6B93B 65%, #C98A12); color: #8A5A00; }
+  .coin-t { background: radial-gradient(circle at 35% 30%, #E8ECF4, #B9C2D6 65%, #7E8AA6); color: #3E4A66; transform: rotateX(180deg); }
+  .coin-shadow { width: 110px; height: 16px; border-radius: 50%; background: #1D3B6B; opacity: .35; margin-top: 10px; filter: blur(3px); }
+  .coin-shadow.tossing { animation: shadowSquash 1.5s cubic-bezier(.33,.6,.4,1) both; }
+
+  /* dice */
+  .dice-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 400px; }
+  .die {
+    box-shadow: 0 6px 0 #00000030, 0 10px 18px #0002;
+    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700;
+  }
+  .die.big   { width: 96px; height: 96px; border-radius: 20px; font-size: 44px; }
+  .die.small { width: 64px; height: 64px; border-radius: 14px; font-size: 30px; }
+  .die.rolling { animation: shake .45s infinite; }
+  .die.landed  { animation: bounceIn .35s; }
+  .pips { display: grid; grid-template-columns: repeat(3, 18px); grid-template-rows: repeat(3, 18px); gap: 3px; }
+  .pip { border-radius: 50%; }
+  .pip.on { background: #fff; }
+
+  /* numberblocks */
+  .numberling {
+    font-size: 46px; font-weight: 700; line-height: 1; color: #fff;
+    paint-order: stroke fill; text-shadow: 0 3px 6px #00000030;
+    animation: bounceIn .4s .35s both;
+  }
+  .nb-stack { display: flex; align-items: flex-end; gap: 6px; justify-content: center; }
+  .nb-col { display: flex; flex-direction: column-reverse; gap: 4px; }
+  .nb-block {
+    width: 48px; height: 48px; border-radius: 10px;
+    box-shadow: inset 0 -5px 0 #00000018, 0 2px 4px #00000025;
+    display: flex; align-items: center; justify-content: center;
+    animation: blockPop .3s both;
+  }
+  .nb-card {
+    color: #fff; border-radius: 18px; padding: 14px 26px; font-size: 80px; font-weight: 700;
+    box-shadow: 0 6px 0 #00000030; display: inline-flex; align-items: center; gap: 16px;
+    text-shadow: 0 2px 0 #00000025; animation: bounceIn .4s;
+  }
+  .face { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .eyes { display: flex; gap: 5px; }
+  .eye { border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; }
+  .pupil { border-radius: 50%; background: #1a1a1a; }
+  .smile { border-radius: 0 0 50% 50% / 0 0 100% 100%; }
+  .num-spin { font-size: 96px; font-weight: 700; color: #1D3B6B; opacity: .6; }
+
+  /* animals */
+  .animal-grid {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px; width: 100%; max-width: 380px;
+  }
+  .animal-btn {
+    background: #fff; border: 3px solid #E8E4FF; border-radius: 20px; padding: 12px 2px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; box-shadow: 0 4px 0 #1D3B6B22;
+    min-width: 0;
+  }
+  .animal-btn .emoji { font-size: clamp(30px, 9vw, 44px); line-height: 1; display: inline-block; }
+  .animal-btn .emoji.wiggling { animation: wiggle .7s; }
+  .animal-btn .label { font-size: clamp(11px, 3.2vw, 13px); font-weight: 700; color: #1D3B6B; }
+  @media (max-width: 360px) { .animal-grid { gap: 7px; } }
+
+  .result { font-size: 32px; font-weight: 700; min-height: 40px; }
+  .result.pop { animation: bounceIn .4s; }
+  .subtle { font-size: 15px; opacity: .7; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+  .confetto { position: fixed; top: -20px; border-radius: 3px; pointer-events: none; z-index: 20; animation: fall ease-in both; will-change: transform; }
+
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 #E6394655,0 6px 0 #9B1B26} 70%{box-shadow:0 0 0 18px #E6394600,0 6px 0 #9B1B26} 100%{box-shadow:0 0 0 0 #E6394600,0 6px 0 #9B1B26} }
+  @keyframes shake { 0%,100%{transform:rotate(-7deg) translateY(0)} 50%{transform:rotate(7deg) translateY(-6px)} }
+  @keyframes blockPop { from{transform:scale(0);opacity:0} to{transform:scale(1);opacity:1} }
+  @keyframes fall { from{transform:translate3d(0,-20px,0) rotate(0)} to{transform:translate3d(0,110vh,0) rotate(400deg)} }
+  @keyframes bounceIn { 0%{transform:scale(.3)} 60%{transform:scale(1.15)} 100%{transform:scale(1)} }
+  @keyframes toss { 0%{transform:translateY(0)} 42%{transform:translateY(-95px)} 58%{transform:translateY(-95px)} 82%{transform:translateY(0)} 90%{transform:translateY(-16px)} 100%{transform:translateY(0)} }
+  @keyframes shadowSquash { 0%{transform:scaleX(1);opacity:.35} 42%{transform:scaleX(.45);opacity:.12} 58%{transform:scaleX(.45);opacity:.12} 82%{transform:scaleX(1.1);opacity:.4} 100%{transform:scaleX(1);opacity:.35} }
+  @keyframes wiggle { 0%,100%{transform:rotate(0) scale(1)} 20%{transform:rotate(-14deg) scale(1.25)} 40%{transform:rotate(12deg) scale(1.25)} 60%{transform:rotate(-9deg) scale(1.2)} 80%{transform:rotate(7deg) scale(1.1)} }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title">Elvin's Talking Play Machine</div>
+  <button class="round" id="soundBtn" style="background:#FCBF49">🔊</button>
+</header>
+
+<div class="mic-wrap">
+  <button id="micBtn" aria-label="Mute or unmute listening">🎤</button>
+  <div id="bubble"></div>
+</div>
+
+<div class="hints">
+  <span class="chip">🪙 “Flip a coin”</span>
+  <span class="chip">🎲 “Roll ten dice”</span>
+  <span class="chip">🔢 “Pick a number”</span>
+  <span class="chip">😄 “Tell a joke”</span>
+  <span class="chip">🐮 “What does the cow say?”</span>
+</div>
+
+<div id="stage"></div>
+
+<nav class="dock">
+  <button class="d-coin"    id="dockCoin"><span class="emoji">🪙</span>Coin</button>
+  <button class="d-dice"    id="dockDice"><span class="emoji">🎲</span>Dice</button>
+  <button class="d-number"  id="dockNumber"><span class="emoji">🔢</span>Number</button>
+  <button class="d-joke"    id="dockJoke"><span class="emoji">😄</span>Joke</button>
+  <button class="d-animals" id="dockAnimals"><span class="emoji">🐮</span>Animals</button>
+</nav>
+
+<script>
+"use strict";
+
+/* ================= data ================= */
+const JOKES = [
+  { q: "Why did the banana go to the doctor?", a: "Because it wasn't peeling well!" },
+  { q: "What do you call a dinosaur that is sleeping?", a: "A dino-SNORE!" },
+  { q: "Why did the cookie go to the hospital?", a: "Because it felt crummy!" },
+  { q: "What do you call a bear with no teeth?", a: "A gummy bear!" },
+  { q: "What does a cow say on a happy day?", a: "It's an a-MOO-zing day!" },
+  { q: "Why did the teddy bear say no to dessert?", a: "Because he was stuffed!" },
+  { q: "Why do ducks have feathers?", a: "To cover their butt-quacks!" },
+  { q: "What is a cat's favourite colour?", a: "Purrr-ple!" },
+  { q: "Why did the tomato turn red?", a: "It saw the salad dressing!" },
+  { q: "What number is always tired?", a: "Ten... because it's ten-out!" },
+  { q: "Why was six afraid of seven?", a: "Because seven eight nine!" },
+  { q: "What did zero say to eight?", a: "Nice belt!" },
+];
+const PRAISE = ["Great asking, Elvin!", "Lovely talking!", "Good job saying that!", "Wow, I heard you!", "Super speaking, Elvin!"];
+const ANIMALS = [
+  { name: "cow",    emoji: "🐮", names: ["cow","moo"],                  sound: "Moo! Moooooo!",          pitch: .55, rate: .72 },
+  { name: "dog",    emoji: "🐶", names: ["dog","doggy","puppy","woof"], sound: "Woof woof! Woof!",       pitch: .9,  rate: 1.25 },
+  { name: "cat",    emoji: "🐱", names: ["cat","kitty","meow"],         sound: "Meow! Meow meow!",       pitch: 1.6, rate: 1 },
+  { name: "duck",   emoji: "🦆", names: ["duck","quack"],               sound: "Quack quack quack!",     pitch: 1.5, rate: 1.3 },
+  { name: "sheep",  emoji: "🐑", names: ["sheep","lamb","baa"],         sound: "Baa! Baa baa!",          pitch: 1.35, rate: .85 },
+  { name: "lion",   emoji: "🦁", names: ["lion","roar"],                sound: "Roooooaaaarrr!",         pitch: .45, rate: .6 },
+  { name: "snake",  emoji: "🐍", names: ["snake","hiss"],               sound: "Sssssssssss!",           pitch: 1.1, rate: .6 },
+  { name: "monkey", emoji: "🐵", names: ["monkey","ooh"],               sound: "Ooh ooh ooh, ah ah ah!", pitch: 1.5, rate: 1.35 },
+];
+
+/* Numberblocks canonical scheme: 1 red, 2 orange, 3 yellow, 4 green, 5 cyan,
+   6 indigo, 7 rainbow, 8 magenta, 9 grey shades, 10 white with red border */
+const NBC = { 1:"#ED1C24", 2:"#F7941D", 3:"#FFD200", 4:"#39B54A", 5:"#00AEEF", 6:"#4B4EA0", 8:"#EC008C" };
+const RAINBOW7 = ["#ED1C24","#F7941D","#FFD200","#39B54A","#00AEEF","#4B4EA0","#92278F"];
+const GREYS9 = ["#C9CDD2","#9AA0A8","#6E7680"];
+const VARIETY = [NBC[1],NBC[2],NBC[3],NBC[4],NBC[5],NBC[6],"#92278F",NBC[8],"#9AA0A8",NBC[1]];
+const PIPS = { 1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8] };
+const NUM_WORDS = { one:1,two:2,to:2,too:2,three:3,four:4,for:4,five:5,six:6,seven:7,eight:8,ate:8,nine:9,ten:10,
+  eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20,hundred:100 };
+
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+const wordsToNums = (t) => t.split(/\s+/).map((w) => NUM_WORDS[w] !== undefined ? NUM_WORDS[w] : w).join(" ");
+const $ = (id) => document.getElementById(id);
+
+function blockStyle(n, i) {
+  if (n === 7) return { bg: RAINBOW7[i % 7], border: null };
+  if (n === 9) return { bg: GREYS9[i % 3], border: null };
+  if (n === 10) return { bg: "#FFFFFF", border: NBC[1] };
+  return { bg: NBC[n] || VARIETY[(Math.abs(n) - 1) % 10], border: null };
+}
+function mainColour(n) {
+  if (n === 7) return RAINBOW7[3];
+  if (n === 9) return GREYS9[2];
+  const d = Math.abs(n) % 10;
+  return d === 0 ? NBC[1] : (NBC[d] || VARIETY[(d - 1) % 10]);
+}
+
+/* ================= state ================= */
+const state = {
+  mode: "home", busy: false, sound: true,
+  listening: false,   // intent: the user wants hands-free listening
+  running: false,     // actual: a recognition session is live right now
+  speaking: false,    // the app is talking, so the mic is held off
+  muted: false, blocked: false, coinSpin: 0, dice: [], lastSides: 6,
+  numRange: [1, 10], joke: null, lastJoke: -1,
+};
+
+/* ================= speech (out) ================= */
+let chosenVoice = null, warmed = false, speechSeq = 0;
+function chooseVoice() {
+  const voices = speechSynthesis.getVoices();
+  if (!voices.length) return;
+  const female = (v) => /female/i.test(v.name) ||
+    /samantha|karen|serena|moira|tessa|zira|susan|hazel|libby|sonia|aria|jenny|kate|stephanie|martha/i.test(v.name);
+  const prefs = [
+    (v) => v.localService && female(v) && /en[-_]GB/i.test(v.lang),
+    (v) => v.localService && female(v),
+    (v) => female(v) && /en[-_]GB/i.test(v.lang),
+    (v) => female(v),
+    (v) => v.localService && /en[-_]GB/i.test(v.lang),
+    (v) => /en[-_]GB/i.test(v.lang),
+  ];
+  for (const p of prefs) { const f = voices.find(p); if (f) { chosenVoice = f; return; } }
+  chosenVoice = voices[0];
+}
+if ("speechSynthesis" in window) {
+  chooseVoice();
+  speechSynthesis.onvoiceschanged = chooseVoice;
+}
+function warmUp() {
+  if (warmed || !("speechSynthesis" in window)) return;
+  warmed = true;
+  const u = new SpeechSynthesisUtterance(" ");
+  u.volume = 0;
+  if (chosenVoice) u.voice = chosenVoice;
+  speechSynthesis.speak(u);
+}
+document.addEventListener("pointerdown", warmUp, { once: true });
+
+/* speak() guarantees onend ALWAYS runs exactly once.
+   Without this, a device with no TTS voices (common on Android's first load and
+   in webviews) never fires utterance.onend, so doJoke's state.busy is never
+   cleared and the whole app locks up — every button and every voice command
+   silently stops working until a reload. */
+function speak(text, opts = {}) {
+  const done = onceFn(opts.onend);
+  const myTurn = ++speechSeq;
+
+  // While we talk, stop listening — otherwise the mic hears the app's own
+  // voice and fires commands back at itself.
+  if (state.sound) suspendListening();
+
+  // Only the newest utterance may hand the mic back, so an earlier watchdog
+  // can't un-mute us in the middle of the sentence that replaced it.
+  const resume = () => {
+    if (myTurn === speechSeq && state.sound) resumeListening();
+    done();
+  };
+
+  if (!state.sound || !("speechSynthesis" in window)) {
+    setTimeout(resume, 400);
+    return;
+  }
+
+  let u;
+  try {
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+    u = new SpeechSynthesisUtterance(text);
+    if (chosenVoice) u.voice = chosenVoice;
+    u.rate = opts.rate ?? 0.88;
+    u.pitch = opts.pitch ?? 1.12;
+    u.onend = resume;
+    u.onerror = resume;
+    speechSynthesis.speak(u);
+  } catch (_) {
+    setTimeout(resume, 400);
+    return;
+  }
+
+  // Watchdog: if the engine never reports back (no voices installed, utterance
+  // dropped, tab backgrounded), release anyway so the app can never wedge.
+  // Roughly generous: ~90ms per character, floor 1.6s, ceiling 12s.
+  const budget = Math.min(12000, Math.max(1600, text.length * 90));
+  setTimeout(() => { if (!done.called) resume(); }, budget);
+}
+
+/* wraps a callback so it can only ever run once, and exposes .called */
+function onceFn(fn) {
+  const f = () => { if (f.called) return; f.called = true; if (fn) fn(); };
+  f.called = false;
+  return f;
+}
+
+/* ================= confetti ================= */
+const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function celebrate() {
+  if (REDUCED) return;
+  // Don't let rapid taps pile up hundreds of nodes on a cheap tablet.
+  if (document.querySelectorAll(".confetto").length > 60) return;
+  const frag = document.createDocumentFragment();
+  const batch = [];
+  for (let i = 0; i < 24; i++) {
+    const c = document.createElement("div");
+    c.className = "confetto";
+    c.style.left = ((i * 41) % 100) + "%";
+    c.style.width = (10 + (i % 3) * 4) + "px";
+    c.style.height = "14px";
+    c.style.background = VARIETY[i % VARIETY.length];
+    c.style.animationDuration = (1.4 + (i % 5) * .25) + "s";
+    c.style.animationDelay = ((i % 7) * .08) + "s";
+    frag.appendChild(c);
+    batch.push(c);
+  }
+  document.body.appendChild(frag);           // one reflow instead of 24
+  setTimeout(() => batch.forEach((c) => c.remove()), 3200);
+}
+
+/* ================= stage rendering ================= */
+function faceHTML(n, small) {
+  const eyeW = small ? 11 : 16, eyeH = small ? 13 : 20;
+  const eyes = n === 1 ? 1 : 2;
+  let e = "";
+  for (let i = 0; i < eyes; i++) {
+    const w = n === 1 ? eyeW * 1.5 : eyeW, h = n === 1 ? eyeH * 1.4 : eyeH;
+    e += `<div class="eye" style="width:${w}px;height:${h}px">
+            <div class="pupil" style="width:${small ? 4.5 : 7}px;height:${small ? 4.5 : 7}px"></div>
+          </div>`;
+  }
+  const sw = small ? 16 : 26, sh = small ? 8 : 13, st = small ? 2.5 : 3.5;
+  return `<div class="face"><div class="eyes">${e}</div>
+          <div class="smile" style="width:${sw}px;height:${sh}px;border-bottom:${st}px solid #3a1a1a"></div></div>`;
+}
+
+function blockFigureHTML(n) {
+  if (n == null) return `<div style="font-size:80px;font-weight:700">?</div>`;
+  const colour = mainColour(n);
+  if (n < 1 || n > 15) {
+    const border = Math.abs(n) % 10 === 0 ? `border:5px solid ${NBC[1]};` : "";
+    return `<div class="nb-card" style="background:${colour};${border}">${n}${faceHTML(n, false)}</div>`;
+  }
+  const cols = Math.ceil(n / 5);
+  let idx = -1, colsHTML = "";
+  for (let c = 0; c < cols; c++) {
+    const inCol = Math.min(5, n - c * 5);
+    let blocks = "";
+    for (let i = 0; i < inCol; i++) {
+      idx++;
+      const { bg, border } = blockStyle(n, idx);
+      const isTop = i === inCol - 1 && c === cols - 1;
+      blocks += `<div class="nb-block" style="background:${bg};${border ? `border:4px solid ${border};` : ""}animation-delay:${(i * .06 + c * .2).toFixed(2)}s">
+                   ${isTop ? faceHTML(n, true) : ""}
+                 </div>`;
+    }
+    colsHTML += `<div class="nb-col">${blocks}</div>`;
+  }
+  return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+            <div class="numberling" style="-webkit-text-stroke:2.5px ${colour}">${n}</div>
+            <div class="nb-stack">${colsHTML}</div>
+          </div>`;
+}
+
+function dieInnerHTML(d, count) {
+  if (d.sides === 6 && d.value && count <= 4) {
+    let pips = "";
+    for (let p = 0; p < 9; p++) pips += `<div class="pip ${(PIPS[d.value] || []).includes(p) ? "on" : ""}"></div>`;
+    return `<div class="pips">${pips}</div>`;
+  }
+  return `<span>${d.value ?? "?"}</span>`;
+}
+function dieHTML(d, i, count, rolling) {
+  const size = count > 4 ? "small" : "big";
+  const cls = rolling ? "rolling" : "landed";
+  const bg = VARIETY[i % VARIETY.length];
+  return `<div class="die ${size} ${cls}" style="background:linear-gradient(145deg,${bg},${bg}CC)">${dieInnerHTML(d, count)}</div>`;
+}
+
+function renderStage() {
+  const s = $("stage");
+  document.querySelectorAll(".dock button").forEach((b) => b.classList.remove("active"));
+  const dockMap = { coin: "dockCoin", dice: "dockDice", number: "dockNumber", joke: "dockJoke", animals: "dockAnimals" };
+  if (dockMap[state.mode]) $(dockMap[state.mode]).classList.add("active");
+
+  if (state.mode === "home") {
+    s.innerHTML = `<div style="font-size:56px">🧸</div>
+      <div style="font-size:24px;font-weight:700">Hello Elvin!</div>
+      <div style="font-size:17px">Ask me with your voice, or tap a button below!</div>`;
+  }
+
+  if (state.mode === "coin") {
+    s.innerHTML = `
+      <div class="coin-area">
+        <div class="toss-wrap" id="tossWrap">
+          <div class="coin3d" id="coinInner" style="transform:rotateX(${state.coinSpin}deg)">
+            <div class="coin-face coin-h">H</div>
+            <div class="coin-face coin-t">T</div>
+          </div>
+        </div>
+        <div class="coin-shadow" id="coinShadow"></div>
+      </div>
+      <div class="result" id="coinResult"></div>
+      <button class="action a-red" onclick="doCoin(false)">🪙 Flip again!</button>`;
+  }
+
+  if (state.mode === "dice") {
+    s.innerHTML = `
+      <div class="dice-row" id="diceRow"></div>
+      <div class="result" id="diceResult" style="font-size:24px"></div>
+      <div class="row">
+        <button class="action a-green" onclick="doDice(state.dice.length||1, state.lastSides, false)">🎲 Roll again!</button>
+        <button class="action a-indigo" onclick="doDice(10, 6, false)">Roll TEN!</button>
+      </div>`;
+    renderDice(false);
+  }
+
+  if (state.mode === "number") {
+    s.innerHTML = `
+      <div id="numWrap" style="min-height:190px;display:flex;align-items:center;justify-content:center"></div>
+      <div class="subtle" id="numRangeLabel">between ${state.numRange[0]} and ${state.numRange[1]}</div>
+      <div class="row">
+        <button class="action a-indigo" onclick="doNumber(1,10,false)">1–10</button>
+        <button class="action a-cyan" onclick="doNumber(1,100,false)">1–100</button>
+      </div>`;
+  }
+
+  if (state.mode === "joke") {
+    const j = state.joke;
+    s.innerHTML = `
+      <div style="font-size:44px">🤡</div>
+      <div style="font-size:22px;font-weight:700">${j ? j.q : ""}</div>
+      <div class="result" id="punchline" style="font-size:24px;color:#ED1C24;min-height:34px">...</div>
+      <button class="action a-yellow" onclick="doJoke(false)">😄 Another one!</button>`;
+  }
+
+  if (state.mode === "animals") {
+    let grid = "";
+    for (const a of ANIMALS) {
+      grid += `<button class="animal-btn" onclick="doAnimalByName('${a.name}', false)">
+                 <span class="emoji" id="animal-${a.name}">${a.emoji}</span>
+                 <span class="label">${a.name}</span>
+               </button>`;
+    }
+    s.innerHTML = `
+      <div style="font-size:20px;font-weight:700">What does the animal say? 🎵</div>
+      <div class="animal-grid">${grid}</div>
+      <div class="subtle">Tap one, or say “What does the cow say?”</div>`;
+  }
+}
+function setMode(m) { state.mode = m; renderStage(); }
+
+/* ================= actions ================= */
+function doCoin(praise) {
+  if (state.busy) return;
+  state.busy = true;
+  if (state.mode !== "coin") setMode("coin");
+  $("coinResult").textContent = "";
+  const result = Math.random() < 0.5 ? "HEADS" : "TAILS";
+  const target = state.coinSpin + 1800 + (result === "TAILS" ? 180 : 0) - (state.coinSpin % 360);
+  state.coinSpin = target;
+  const wrap = $("tossWrap"), shadow = $("coinShadow"), inner = $("coinInner");
+  wrap.classList.remove("tossing"); shadow.classList.remove("tossing");
+  void wrap.offsetWidth; // restart animations
+  wrap.classList.add("tossing"); shadow.classList.add("tossing");
+  requestAnimationFrame(() => { inner.style.transform = `rotateX(${target}deg)`; });
+  setTimeout(() => {
+    const r = $("coinResult");
+    if (r) { r.textContent = `🎉 ${result}!`; r.classList.add("pop"); }
+    celebrate();
+    speak(`${praise ? pick(PRAISE) + " " : ""}It's ${result.toLowerCase()}!`);
+    state.busy = false;
+  }, 1500);
+}
+
+function renderDice(rolling) {
+  const row = $("diceRow");
+  if (!row) return;
+  const list = state.dice.length ? state.dice : [{ sides: state.lastSides, value: null }];
+  const count = state.dice.length || 1;
+
+  // Rebuild only when the number of dice changes. During a roll we keep the
+  // same nodes and swap just the faces, so the shake keyframes run continuously
+  // instead of being torn down and restarted 10 times a second.
+  if (row.children.length !== list.length) {
+    row.innerHTML = list.map((d, i) => dieHTML(d, i, count, rolling)).join("");
+    return;
+  }
+  const size = count > 4 ? "small" : "big";
+  const cls = rolling ? "rolling" : "landed";
+  for (let i = 0; i < list.length; i++) {
+    const el = row.children[i];
+    const next = `die ${size} ${cls}`;
+    if (el.className !== next) el.className = next;
+    el.innerHTML = dieInnerHTML(list[i], count);
+  }
+}
+
+function doDice(count = 1, sides = 6, praise) {
+  if (state.busy) return;
+  count = Math.min(Math.max(count, 1), 10);
+  if (!(sides >= 2 && sides <= 100)) sides = 6;
+  state.busy = true; state.lastSides = sides;
+  if (state.mode !== "dice") setMode("dice");
+  $("diceResult").textContent = "";
+  let ticks = 0;
+  const iv = setInterval(() => {
+    state.dice = Array.from({ length: count }, () => ({ sides, value: randInt(1, sides) }));
+    renderDice(true);
+    ticks++;
+    if (ticks > 9) {
+      clearInterval(iv);
+      state.dice = Array.from({ length: count }, () => ({ sides, value: randInt(1, sides) }));
+      renderDice(false);
+      celebrate();
+      const total = state.dice.reduce((s, d) => s + d.value, 0);
+      if (count > 1) $("diceResult").innerHTML =
+        `Altogether: <span style="color:#ED1C24;font-size:32px">${total}</span> 🎉`;
+      const msg = count === 1 ? `You rolled a ${total}!`
+        : `You rolled ${state.dice.map((d) => d.value).join(", ")}. Altogether that makes ${total}!`;
+      speak(`${praise ? pick(PRAISE) + " " : ""}${msg}`);
+      state.busy = false;
+    }
+  }, 110);
+}
+
+function doNumber(min = 1, max = 10, praise) {
+  if (state.busy) return;
+  if (min > max) [min, max] = [max, min];
+  state.busy = true; state.numRange = [min, max];
+  if (state.mode !== "number") setMode("number");
+  $("numRangeLabel").textContent = `between ${min} and ${max}`;
+  let ticks = 0;
+  const iv = setInterval(() => {
+    $("numWrap").innerHTML = `<div class="num-spin">${randInt(min, max)}</div>`;
+    ticks++;
+    if (ticks > 13) {
+      clearInterval(iv);
+      const final = randInt(min, max);
+      $("numWrap").innerHTML = blockFigureHTML(final);
+      celebrate();
+      speak(`${praise ? pick(PRAISE) + " " : ""}Your number is ${final}!`);
+      state.busy = false;
+    }
+  }, 90);
+}
+
+function doJoke(praise) {
+  if (state.busy) return;
+  let i;
+  do { i = Math.floor(Math.random() * JOKES.length); } while (i === state.lastJoke);
+  state.lastJoke = i;
+  state.joke = JOKES[i];
+  state.busy = true;
+  setMode("joke");
+  const reveal = () => {
+    const p = $("punchline");
+    if (p) { p.textContent = `😂 ${state.joke.a}`; p.classList.add("pop"); }
+    celebrate();
+    speak(state.joke.a, { pitch: 1.2 });
+    state.busy = false;
+  };
+  speak(`${praise ? pick(PRAISE) + " " : ""}${state.joke.q}`, { onend: () => setTimeout(reveal, 1100) });
+}
+
+function doAnimal(a, praise) {
+  if (state.mode !== "animals") setMode("animals");
+  const el = $(`animal-${a.name}`);
+  if (el) { el.classList.remove("wiggling"); void el.offsetWidth; el.classList.add("wiggling"); }
+  celebrate();
+  speak(`${praise ? pick(PRAISE) + " " : ""}The ${a.name} says... ${a.sound}`, { pitch: a.pitch, rate: a.rate });
+}
+function doAnimalByName(name, praise) {
+  const a = ANIMALS.find((x) => x.name === name);
+  if (a) doAnimal(a, praise);
+}
+
+/* ================= voice command parser ================= */
+function handleCommand(raw) {
+  const text = wordsToNums(raw.toLowerCase().replace(/[^a-z0-9\s]/g, " "));
+  setBubble(`I heard: “${raw}”`);
+
+  const animal = ANIMALS.find((a) => a.names.some((nm) => new RegExp(`\\b${nm}\\b`).test(text)));
+  if (animal) return doAnimal(animal, true);
+  if (/\banimal\b/.test(text)) { setMode("animals"); return speak("Which animal? Say cow, dog, cat, duck, sheep, lion, snake, or monkey!"); }
+
+  if (/\bjoke\b|funny/.test(text)) return doJoke(true);
+  if (state.mode === "joke" && /\banother\b|\bagain\b|more/.test(text)) return doJoke(true);
+
+  if (/\bflip\b|\bcoin\b|\btoss\b|heads|tails/.test(text)) return doCoin(true);
+
+  if (/\broll\b|\bdice\b|\bdie\b/.test(text)) {
+    let sides = 6, count = 1;
+    const sidedMatch = text.match(/(\d+)\s*(sided|side|sides|dimensional|d)\b/);
+    if (sidedMatch) sides = parseInt(sidedMatch[1], 10);
+    const countMatch = text.match(/roll\s+(\d+)\s+dice/) || text.match(/(\d+)\s+dice/);
+    if (countMatch && !(`${countMatch[1]}` === `${sides}` && sidedMatch)) count = parseInt(countMatch[1], 10);
+    if (/\bagain\b/.test(text)) sides = state.lastSides;
+    return doDice(count, sides, true);
+  }
+
+  if (/\bnumber\b|\bcount\b|\bgenerate\b|\brandom\b|give me|\bchoose\b/.test(text)) {
+    const between = text.match(/between\s+(-?\d+)\s+and\s+(-?\d+)/);
+    if (between) return doNumber(parseInt(between[1], 10), parseInt(between[2], 10), true);
+    if (/big/.test(text)) return doNumber(1, 100, true);
+    return doNumber(1, 10, true);
+  }
+
+  if (/\bagain\b|\bmore\b|one more/.test(text)) {
+    if (state.mode === "coin") return doCoin(true);
+    if (state.mode === "dice") return doDice(state.dice.length || 1, state.lastSides, true);
+    if (state.mode === "number") return doNumber(state.numRange[0], state.numRange[1], true);
+    if (state.mode === "joke") return doJoke(true);
+  }
+
+  if (/\bhello\b|\bhi\b|\bhiya\b/.test(text)) return speak("Hello Elvin! What shall we play?");
+  if (/\bhome\b|\bstop\b|go back/.test(text)) { setMode("home"); return speak("Okay! Pick a game!"); }
+
+  speak("Ooh! Say it again, Elvin!");
+}
+
+/* ================= speech (in) ================= */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null;
+function setBubble(t) { $("bubble").textContent = t; }
+function micUI() {
+  const b = $("micBtn");
+  b.classList.toggle("on", state.running && !state.muted && !state.speaking);
+  b.textContent = state.muted ? "🔇"
+    : state.speaking ? "🗣️"
+    : (state.running ? "👂" : "🎤");
+  b.setAttribute("aria-pressed", String(!state.muted));
+}
+
+if (!window.isSecureContext && location.protocol !== "file:") {
+  // Voice input needs HTTPS. Served over plain http:// the mic is silently
+  // refused, which looks like "the machine is broken".
+  state.blocked = true;
+  setBubble("🔒 Open this page over https:// for voice");
+} else if (!SR) {
+  state.blocked = true;
+  setBubble("🔇 Voice needs Chrome, Edge or Safari — buttons still work!");
+} else {
+  recog = new SR();
+  recog.lang = "en-GB";
+  recog.continuous = false;
+  recog.interimResults = true;
+  recog.maxAlternatives = 3;
+  recog.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      if (res.isFinal) {
+        const t = res[0].transcript.trim();
+        if (t) handleCommand(t);
+      } else interim += res[0].transcript;
+    }
+    if (interim) setBubble(`I heard: “${interim.trim()} …”`);
+  };
+  recog.onstart = () => { state.running = true; micUI(); };
+  recog.onerror = (e) => {
+    // these two are routine in hands-free mode: onend will restart us
+    if (e.error === "no-speech" || e.error === "aborted") return;
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      state.blocked = true; setBubble("🔇 Tap the mic to allow listening");
+    }
+    else if (e.error === "audio-capture") { state.blocked = true; setBubble("🔇 No microphone found"); }
+    else if (e.error === "network") setBubble("📶 No internet for voice");
+    else setBubble("Voice error: " + e.error);
+    state.running = false;
+    micUI();
+  };
+  recog.onend = () => {
+    state.running = false;
+    // auto-restart for hands-free listening, but never while we're talking
+    if (state.listening && !state.muted && !state.blocked && !state.speaking) {
+      restartSoon();
+    } else {
+      micUI();
+    }
+  };
+}
+
+/* Chrome throws InvalidStateError if start() lands while the previous session
+   is still tearing down, so always restart on a short delay and never twice. */
+let restartTimer = null;
+function restartSoon(delay = 250) {
+  clearTimeout(restartTimer);
+  restartTimer = setTimeout(() => {
+    if (!recog || state.running || state.muted || state.blocked || state.speaking || !state.listening) return;
+    try { recog.start(); state.running = true; } catch (_) {}
+    micUI();
+  }, delay);
+}
+
+function startListening() {
+  if (!recog || state.muted || state.blocked) return;
+  state.listening = true;              // intent: we want to be listening
+  if (state.running || state.speaking) { micUI(); return; }
+  try { recog.start(); state.running = true; } catch (_) {}
+  micUI();
+}
+function stopListening() {
+  state.listening = false;
+  clearTimeout(restartTimer);
+  if (recog) { try { recog.abort(); } catch (_) {} }
+  state.running = false;
+  micUI();
+}
+
+/* Half-duplex: mute the mic for as long as the app is speaking, so the machine
+   never hears itself say "roll ten dice" and obey its own voice. */
+function suspendListening() {
+  state.speaking = true;
+  clearTimeout(restartTimer);
+  if (recog && state.running) { try { recog.abort(); } catch (_) {} }
+  state.running = false;
+  micUI();
+}
+function resumeListening() {
+  state.speaking = false;
+  // small gap so the tail of the speaker output isn't captured
+  if (state.listening && !state.muted && !state.blocked) restartSoon(350);
+  micUI();
+}
+
+// Listening is ON by default — the mic button is just a mute toggle.
+$("micBtn").addEventListener("click", () => {
+  state.muted = !state.muted;
+  if (state.muted) { stopListening(); setBubble(""); }
+  else { state.blocked = false; startListening(); }
+  micUI();
+});
+
+// Start immediately; some platforms (iPhone especially) only allow the
+// microphone after the first touch, so also retry on every interaction.
+startListening();
+document.addEventListener("pointerdown", () => startListening());
+
+/* ================= misc UI ================= */
+$("soundBtn").addEventListener("click", () => {
+  state.sound = !state.sound;
+  $("soundBtn").textContent = state.sound ? "🔊" : "🔇";
+  $("soundBtn").style.background = state.sound ? "#FCBF49" : "#ccc";
+  if (!state.sound) {
+    try { speechSynthesis.cancel(); } catch (_) {}
+    resumeListening();   // nothing is talking now, so listening can resume
+  }
+});
+$("dockCoin").addEventListener("click", () => doCoin(false));
+$("dockDice").addEventListener("click", () => doDice(1, 6, false));
+$("dockNumber").addEventListener("click", () => doNumber(1, 10, false));
+$("dockJoke").addEventListener("click", () => doJoke(false));
+$("dockAnimals").addEventListener("click", () => setMode("animals"));
+
+renderStage();
+</script>
+</body>
+</html>
