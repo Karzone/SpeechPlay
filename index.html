@@ -243,7 +243,51 @@ const JOKES = [
   { q: "Why was six afraid of seven?", a: "Because seven eight nine!" },
   { q: "What did zero say to eight?", a: "Nice belt!" },
 ];
-const PRAISE = ["Great asking, Elvin!", "Lovely talking!", "Good job saying that!", "Wow, I heard you!", "Super speaking, Elvin!"];
+const NAME = "Elvin";
+
+/* Elvin has a speech delay, so the machine praises the ACT OF TALKING every
+   single time he uses his voice — never the accuracy, and never silence.
+   Kept short so the reward lands immediately after he speaks. */
+const PRAISE = [
+  `Great asking, ${NAME}!`,          `Lovely talking, ${NAME}!`,
+  `Good job using your words, ${NAME}!`, `Wow, I heard you, ${NAME}!`,
+  `Super speaking, ${NAME}!`,        `Brilliant talking, ${NAME}!`,
+  `You said that so well, ${NAME}!`, `Nice loud voice, ${NAME}!`,
+  `I love hearing you talk, ${NAME}!`, `Well done for asking, ${NAME}!`,
+  `That was clear talking, ${NAME}!`,  `You're such a good talker, ${NAME}!`,
+  `Amazing words, ${NAME}!`,         `Yes! I heard every word, ${NAME}!`,
+];
+
+/* Gentle invitations to say something else — the point is to pull another
+   utterance out of him, not just to answer and stop. */
+const ENCOURAGE = [
+  "What shall we play next?", "Tell me another one!", "Your turn again!",
+  "What else shall we do?", "Say another one for me!", "I'm listening!",
+];
+
+/* When the words don't come through. This must STILL be praise: he tried, and
+   being told he was wrong is the fastest way to stop a child talking. */
+const TRY_AGAIN = [
+  `Ooh, good try, ${NAME}! Say it again?`,
+  `I love hearing you, ${NAME}! One more time?`,
+  `Nice talking, ${NAME}! Tell me again?`,
+  `Good voice, ${NAME}! Can you say it once more?`,
+  `Keep talking, ${NAME}! I'm listening!`,
+];
+
+// One "Elvin" per response: the praise line already says his name, so only
+// add it when there is no praise line.
+function addName(line) {
+  if (/elvin/i.test(line)) return line;
+  if (/\.\.\.\s*$/.test(line)) return line;          // don't mangle "The cow says..."
+  return line.replace(/\s*([!?.])\s*$/, `, ${NAME}$1`);
+}
+function forElvin(praise, line, invite) {
+  const text = praise ? `${pick(PRAISE)} ${line}` : addName(line);
+  // only invite more talking after he has spoken, and not every time
+  return (praise && invite !== false && Math.random() < 0.45)
+    ? `${text} ${pick(ENCOURAGE)}` : text;
+}
 const ANIMALS = [
   { name: "cow",    emoji: "🐮", names: ["cow","moo"],                  sound: "Moo! Moooooo!",          pitch: .55, rate: .72 },
   { name: "dog",    emoji: "🐶", names: ["dog","doggy","puppy","woof"], sound: "Woof woof! Woof!",       pitch: .9,  rate: 1.25 },
@@ -329,18 +373,28 @@ const LETTER_WORDS = {
 
 /* ================= speech (out) ================= */
 let chosenVoice = null, warmed = false, speechSeq = 0;
+/* Known-female voices across iOS/macOS, Android/Chrome and Windows. Platforms
+   rarely expose a gender flag, so we go by name. */
+const FEMALE_NAMES = /(female|samantha|karen|serena|moira|tessa|fiona|catherine|allison|ava|susan|zira|hazel|libby|sonia|aria|jenny|kate|stephanie|martha|nicky|zoe|joanna|salli|kimberly|emma|amy|olivia|isha|veena)/i;
+// \b keeps "male" from matching inside "Female"
+const MALE_NAMES = /(\bmale\b|daniel|alex|fred|oliver|george|james|arthur|gordon|rocko|reed|rishi|thomas|jorge|diego|aaron|nathan|\btom\b|\bguy\b|ryan|brandon|eric|mark|david|william|liam|ravi)/i;
+const isFemaleVoice = (v) => FEMALE_NAMES.test(v.name) && !MALE_NAMES.test(v.name);
+const isGB = (v) => /en[-_]GB/i.test(v.lang);
+const isEN = (v) => /^en/i.test(v.lang);
+
 function chooseVoice() {
   const voices = speechSynthesis.getVoices();
   if (!voices.length) return;
-  const female = (v) => /female/i.test(v.name) ||
-    /samantha|karen|serena|moira|tessa|zira|susan|hazel|libby|sonia|aria|jenny|kate|stephanie|martha/i.test(v.name);
   const prefs = [
-    (v) => v.localService && female(v) && /en[-_]GB/i.test(v.lang),
-    (v) => v.localService && female(v),
-    (v) => female(v) && /en[-_]GB/i.test(v.lang),
-    (v) => female(v),
-    (v) => v.localService && /en[-_]GB/i.test(v.lang),
-    (v) => /en[-_]GB/i.test(v.lang),
+    // best first: a British female voice, ideally installed on the device
+    (v) => v.localService && isFemaleVoice(v) && isGB(v),
+    (v) => isFemaleVoice(v) && isGB(v),
+    (v) => v.localService && isFemaleVoice(v) && isEN(v),
+    (v) => isFemaleVoice(v) && isEN(v),
+    (v) => isFemaleVoice(v),
+    (v) => v.localService && isGB(v),
+    (v) => isGB(v),
+    (v) => isEN(v),
   ];
   for (const p of prefs) { const f = voices.find(p); if (f) { chosenVoice = f; return; } }
   chosenVoice = voices[0];
@@ -349,13 +403,23 @@ if ("speechSynthesis" in window) {
   chooseVoice();
   speechSynthesis.onvoiceschanged = chooseVoice;
 }
+/* iOS and Android only allow speech that begins inside a real user gesture.
+   This runs on the very first touch to unlock the engine for the rest of the
+   session. It must be a NORMAL-volume utterance — a volume:0 one does not
+   count as an unlock on iOS — so we speak a single space, which is silent
+   anyway. */
 function warmUp() {
   if (warmed || !("speechSynthesis" in window)) return;
   warmed = true;
-  const u = new SpeechSynthesisUtterance(" ");
-  u.volume = 0;
-  if (chosenVoice) u.voice = chosenVoice;
-  speechSynthesis.speak(u);
+  try {
+    speechSynthesis.cancel();
+    if (speechSynthesis.paused) speechSynthesis.resume();
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 1;
+    u.rate = 1;
+    if (chosenVoice) u.voice = chosenVoice;
+    speechSynthesis.speak(u);
+  } catch (_) {}
 }
 document.addEventListener("pointerdown", warmUp, { once: true });
 // browsers only allow audio after a gesture, so open the context on first touch
@@ -369,6 +433,7 @@ document.addEventListener("pointerdown", () => getAudio(), { once: true });
 function speak(text, opts = {}) {
   const done = onceFn(opts.onend);
   const myTurn = ++speechSeq;
+  const wasRunning = state.running;          // was the mic holding the audio session?
 
   // While we talk, stop listening — otherwise the mic hears the app's own
   // voice and fires commands back at itself.
@@ -386,26 +451,37 @@ function speak(text, opts = {}) {
     return;
   }
 
-  let u;
-  try {
-    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
-    u = new SpeechSynthesisUtterance(text);
-    if (chosenVoice) u.voice = chosenVoice;
-    u.rate = opts.rate ?? 0.88;
-    u.pitch = opts.pitch ?? 1.12;
-    u.onend = resume;
-    u.onerror = resume;
-    speechSynthesis.speak(u);
-  } catch (_) {
-    setTimeout(resume, 400);
-    return;
-  }
+  const fire = () => {
+    if (myTurn !== speechSeq) { done(); return; }   // a newer line replaced us
+    let u;
+    try {
+      speechSynthesis.cancel();
+      // iOS can leave the queue paused after a cancel; speak() then does nothing
+      if (speechSynthesis.paused) speechSynthesis.resume();
+      u = new SpeechSynthesisUtterance(text);
+      if (chosenVoice) u.voice = chosenVoice;
+      u.lang = (chosenVoice && chosenVoice.lang) || "en-GB";  // Android needs this
+      u.volume = 1;
+      u.rate = opts.rate ?? 0.9;
+      u.pitch = opts.pitch ?? 1.15;
+      u.onend = resume;
+      u.onerror = resume;
+      speechSynthesis.speak(u);
+    } catch (_) {
+      setTimeout(resume, 400);
+      return;
+    }
+    // Watchdog: if the engine never reports back (no voices installed, utterance
+    // dropped, tab backgrounded), release anyway so the app can never wedge.
+    const budget = Math.min(12000, Math.max(1600, text.length * 95));
+    setTimeout(() => { if (!done.called) resume(); }, budget);
+  };
 
-  // Watchdog: if the engine never reports back (no voices installed, utterance
-  // dropped, tab backgrounded), release anyway so the app can never wedge.
-  // Roughly generous: ~90ms per character, floor 1.6s, ceiling 12s.
-  const budget = Math.min(12000, Math.max(1600, text.length * 90));
-  setTimeout(() => { if (!done.called) resume(); }, budget);
+  /* On a phone the mic and the speaker share one audio session. If we speak in
+     the same tick as stopping recognition, the session is still in record mode
+     and the speech is simply never heard — which is exactly the "works on the
+     laptop, silent on mobile" symptom. Give the mic a moment to let go. */
+  if (wasRunning) setTimeout(fire, 220); else fire();
 }
 
 /* wraps a callback so it can only ever run once, and exposes .called */
@@ -828,7 +904,7 @@ function doCoin(praise) {
     const r = $("coinResult");
     if (r) { r.textContent = `🎉 ${result}!`; r.classList.add("pop"); }
     celebrate();
-    speak(`${praise ? pick(PRAISE) + " " : ""}It's ${result.toLowerCase()}!`);
+    speak(forElvin(praise, `It's ${result.toLowerCase()}!`));
     state.busy = false;
   }, 1500);
 }
@@ -878,7 +954,7 @@ function doDice(count = 1, sides = 6, praise) {
         `Altogether: <span style="color:#ED1C24;font-size:32px">${total}</span> 🎉`;
       const msg = count === 1 ? `You rolled a ${total}!`
         : `You rolled ${state.dice.map((d) => d.value).join(", ")}. Altogether that makes ${total}!`;
-      speak(`${praise ? pick(PRAISE) + " " : ""}${msg}`);
+      speak(forElvin(praise, msg));
       state.busy = false;
     }
   }, 110);
@@ -901,7 +977,7 @@ function doNumber(min = 1, max = 10, praise) {
       celebrate();
       // say "negative five", not "dash five"
       const spoken = final < 0 ? `negative ${Math.abs(final)}` : `${final}`;
-      speak(`${praise ? pick(PRAISE) + " " : ""}Your number is ${spoken}!`);
+      speak(forElvin(praise, `Your number is ${spoken}!`));
       state.busy = false;
     }
   }, 90);
@@ -948,7 +1024,7 @@ function doJoke(praise, forceIndex) {
     speak(state.joke.a, { pitch: 1.2 });
     state.busy = false;
   };
-  speak(`${praise ? pick(PRAISE) + " " : ""}${state.joke.q}`, { onend: () => setTimeout(reveal, 1100) });
+  speak(forElvin(praise, state.joke.q, false), { onend: () => setTimeout(reveal, 1100) });
 }
 
 function doAnimal(a, praise) {
@@ -957,7 +1033,9 @@ function doAnimal(a, praise) {
   if (el) { el.classList.remove("wiggling"); void el.offsetWidth; el.classList.add("wiggling"); }
   celebrate();
   // announce in the friendly voice, then play the real synthesised sound
-  speak(`${praise ? pick(PRAISE) + " " : ""}The ${a.name} says...`, { onend: () => playAnimalSound(a) });
+  speak(praise ? `${pick(PRAISE)} The ${a.name} says...`
+              : `Listen, ${NAME}! The ${a.name} says...`,
+        { onend: () => playAnimalSound(a) });
 }
 function doLetter(a, praise) {
   state.letter = a;
@@ -966,7 +1044,7 @@ function doLetter(a, praise) {
   if (el) { el.classList.remove("wiggling"); void el.offsetWidth; el.classList.add("wiggling"); }
   celebrate();
   // "B says buh. B is for ball!"
-  speak(`${praise ? pick(PRAISE) + " " : ""}${a.letter} says ${a.sound}. ${a.letter} is for ${a.word}!`,
+  speak(forElvin(praise, `${a.letter} says ${a.sound}. ${a.letter} is for ${a.word}!`),
         { rate: .8 });
 }
 function doLetterByName(ch, praise) {
@@ -997,12 +1075,12 @@ function handleCommand(raw) {
   }
   if (/\bletters?\b|\balphabet\b|alphablock/.test(text)) {
     setMode("letters");
-    return speak("Which letter? Say letter A, or tap one!");
+    return speak(`Which letter, ${NAME}? Say letter A, or tap one!`);
   }
 
   const animal = ANIMALS.find((a) => a.names.some((nm) => new RegExp(`\\b${nm}\\b`).test(text)));
   if (animal) return doAnimal(animal, true);
-  if (/\banimal\b/.test(text)) { setMode("animals"); return speak("Which animal? Say cow, dog, cat, duck, sheep, lion, snake, or monkey!"); }
+  if (/\banimal\b/.test(text)) { setMode("animals"); return speak(`Which animal, ${NAME}? Say cow, dog, cat, duck, sheep, lion, snake, or monkey!`); }
 
   if (/\bflip\b|\bcoin\b|\btoss\b|heads|tails/.test(text)) return doCoin(true);
 
@@ -1042,10 +1120,10 @@ function handleCommand(raw) {
   const bare = text.match(/^\s*(-?\d{1,3})\s*$/);
   if (bare) { const n = parseInt(bare[1], 10); return doNumber(n, n, true); }
 
-  if (/\bhello\b|\bhi\b|\bhiya\b/.test(text)) return speak("Hello Elvin! What shall we play?");
-  if (/\bhome\b|\bstop\b|go back/.test(text)) { setMode("home"); return speak("Okay! Pick a game!"); }
+  if (/\bhello\b|\bhi\b|\bhiya\b/.test(text)) return speak(`Hello ${NAME}! ${pick(ENCOURAGE)}`);
+  if (/\bhome\b|\bstop\b|go back/.test(text)) { setMode("home"); return speak(`Okay ${NAME}! Pick a game!`); }
 
-  speak("Ooh! Say it again, Elvin!");
+  speak(pick(TRY_AGAIN));   // he spoke — always reward that, never correct him
 }
 
 /* ================= speech (in) ================= */
