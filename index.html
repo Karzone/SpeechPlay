@@ -21,7 +21,7 @@
     background-attachment: fixed;
     font-family: 'Fredoka', 'Comic Sans MS', 'Segoe UI', sans-serif;
     display: flex; flex-direction: column; align-items: center;
-    padding: 12px 12px 130px;
+    padding: 8px 10px 112px;
     /* kid-proofing: no accidental text selection, no pull-to-refresh mid-game */
     -webkit-user-select: none; user-select: none;
     overscroll-behavior-y: contain;
@@ -29,30 +29,30 @@
   button { font-family: inherit; touch-action: manipulation; cursor: pointer; }
   button:active { transform: translateY(3px); }
 
-  header { width: 100%; max-width: 460px; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-  .title { font-size: clamp(20px, 5.5vw, 30px); font-weight: 700; color: #1D3B6B; text-shadow: 0 2px 0 #ffffff90; }
-  .round { width: 46px; height: 46px; border-radius: 50%; border: none; font-size: 20px; box-shadow: 0 4px 0 #00000025; }
+  header { width: 100%; max-width: 460px; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+  .title { font-size: clamp(17px, 4.8vw, 27px); font-weight: 700; color: #1D3B6B; text-shadow: 0 2px 0 #ffffff90; line-height: 1.15; }
+  .round { width: 40px; height: 40px; border-radius: 50%; border: none; font-size: 18px; box-shadow: 0 4px 0 #00000025; flex: none; }
 
-  .mic-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .mic-wrap { display: flex; flex-direction: column; align-items: center; gap: 5px; margin-bottom: 2px; }
   #micBtn {
-    position: relative; width: 74px; height: 74px; border-radius: 50%; border: 4px solid #fff;
-    background: #1D3B6B; color: #fff; font-size: 30px; box-shadow: 0 6px 0 #0F2447;
+    position: relative; width: 58px; height: 58px; border-radius: 50%; border: 3px solid #fff;
+    background: #1D3B6B; color: #fff; font-size: 25px; box-shadow: 0 5px 0 #0F2447;
   }
   #micBtn.on { background: #E63946; box-shadow: 0 0 0 8px #E6394633, 0 6px 0 #9B1B26; animation: pulse 1.2s infinite; }
   #bubble {
-    background: #fff; color: #1D3B6B; border-radius: 18px; padding: 8px 16px;
-    font-size: 15px; font-weight: 600; box-shadow: 0 3px 8px #0002; max-width: 340px;
-    min-height: 22px; text-align: center;
+    background: #fff; color: #1D3B6B; border-radius: 14px; padding: 5px 12px;
+    font-size: 13px; font-weight: 600; box-shadow: 0 3px 8px #0002; max-width: 330px;
+    min-height: 18px; text-align: center; line-height: 1.3;
   }
   #bubble:empty { display: none; }
 
-  .hints { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 440px; }
-  .chip { background: #ffffffd9; color: #1D3B6B; border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; box-shadow: 0 2px 4px #0002; }
+  .hints { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 440px; }
+  .chip { background: #ffffffd9; color: #1D3B6B; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; box-shadow: 0 2px 4px #0002; white-space: nowrap; }
 
   #stage {
-    background: #FFFDF6; border-radius: 30px; width: 100%; max-width: 460px; min-height: 300px;
+    background: #FFFDF6; border-radius: 24px; width: 100%; max-width: 460px; min-height: 250px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 14px; padding: 22px 16px; margin: 10px 0;
+    gap: 10px; padding: 16px 12px; margin: 6px 0;
     box-shadow: 0 8px 0 #1D3B6B33, 0 16px 32px #0004; color: #1D3B6B;
     text-align: center; position: relative;
   }
@@ -155,6 +155,16 @@
   .animal-btn .emoji.wiggling { animation: wiggle .7s; }
   .animal-btn .label { font-size: clamp(11px, 3.2vw, 13px); font-weight: 700; color: #1D3B6B; }
   @media (max-width: 360px) { .animal-grid { gap: 7px; } }
+  /* Short phones: keep the prompts but on one swipeable line, so the stage and
+     the bottom buttons are not pushed off the screen. */
+  @media (max-height: 740px) {
+    .hints { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start;
+             width: 100%; max-width: 460px; padding-bottom: 2px;
+             scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .hints::-webkit-scrollbar { display: none; }
+    .title { font-size: clamp(16px, 4.4vw, 22px); }
+    #micBtn { width: 52px; height: 52px; font-size: 22px; }
+  }
 
   /* alphablocks */
   .letter-grid {
@@ -181,6 +191,42 @@
   .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
   .confetto { position: fixed; top: -20px; border-radius: 3px; pointer-events: none; z-index: 20; animation: fall ease-in both; will-change: transform; }
+
+  /* little visitors that wander past while the machine is talking */
+  .peeker {
+    position: fixed; left: -76px; bottom: calc(92px + env(safe-area-inset-bottom));
+    pointer-events: none; z-index: 4; will-change: transform;
+    animation: sneakRight 4s linear both;
+  }
+  .peeker.rtl { left: auto; right: -76px; animation-name: sneakLeft; }
+  .peeker span { display: block; font-size: 42px; animation: bob .55s ease-in-out infinite; }
+  .peeker.rtl span { animation-name: bobFlip; }
+  .peeker.peek {
+    left: 14%; right: auto; bottom: calc(84px + env(safe-area-inset-bottom));
+    animation: peekUp 2.4s ease-in-out both;
+  }
+  .peeker.peek span { animation: peekWiggle 2.4s ease-in-out both; }
+  /* a little hand waving hello at Elvin */
+  .peeker { position: fixed; }
+  .peeker .wave {
+    position: absolute; right: -20px; top: 2px; font-size: 24px;
+    transform-origin: 60% 90%; animation: waveHand .5s ease-in-out infinite;
+  }
+  @keyframes waveHand { 0%,100% { transform: rotate(-20deg) } 50% { transform: rotate(25deg) } }
+
+  @keyframes sneakRight { from { transform: translateX(0) } to { transform: translateX(calc(100vw + 150px)) } }
+  @keyframes sneakLeft  { from { transform: translateX(0) } to { transform: translateX(calc(-100vw - 150px)) } }
+  @keyframes bob     { 0%,100%{ transform: translateY(0) rotate(-5deg) } 50%{ transform: translateY(-9px) rotate(5deg) } }
+  @keyframes bobFlip { 0%,100%{ transform: scaleX(-1) translateY(0) rotate(5deg) } 50%{ transform: scaleX(-1) translateY(-9px) rotate(-5deg) } }
+  @keyframes peekUp {
+    0% { transform: translateY(70px) } 16% { transform: translateY(-8px) }
+    26% { transform: translateY(0) }   74% { transform: translateY(0) }
+    100% { transform: translateY(70px) }
+  }
+  @keyframes peekWiggle {
+    0%,26%,100% { transform: rotate(0) } 40% { transform: rotate(-12deg) }
+    55% { transform: rotate(11deg) }     70% { transform: rotate(-6deg) }
+  }
 
   @keyframes pulse { 0%{box-shadow:0 0 0 0 #E6394655,0 6px 0 #9B1B26} 70%{box-shadow:0 0 0 18px #E6394600,0 6px 0 #9B1B26} 100%{box-shadow:0 0 0 0 #E6394600,0 6px 0 #9B1B26} }
   @keyframes shake { 0%,100%{transform:rotate(-7deg) translateY(0)} 50%{transform:rotate(7deg) translateY(-6px)} }
@@ -467,6 +513,8 @@ function speak(text, opts = {}) {
       u.onend = resume;
       u.onerror = resume;
       speechSynthesis.speak(u);
+      // send a friend past for anything longer than a word or two
+      if (text.trim().length > 14 && Math.random() < 0.7) spawnPeeker();
     } catch (_) {
       setTimeout(resume, 400);
       return;
@@ -715,6 +763,29 @@ function playAnimalSound(a) {
 
 /* ================= confetti ================= */
 const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* While the machine is talking, a little friend wanders past or pops up and
+   waves at Elvin — something to watch while he listens, and a nudge to keep
+   him facing the screen when it is his turn to speak. */
+const PEEKERS = ["🐮","🐵","🐶","🐱","🦆","🐑","🦁","🐍","🐸","🦊","🐰","🐭","🐷","🐧","🐻","🦉","🐢","🦄"];
+function spawnPeeker() {
+  if (REDUCED) return;
+  if (document.querySelector(".peeker")) return;        // only ever one at a time
+  const el = document.createElement("div");
+  const peek = Math.random() < 0.45;
+  el.className = "peeker" + (peek ? " peek" : (Math.random() < 0.5 ? " rtl" : ""));
+  const who = document.createElement("span");
+  who.textContent = pick(PEEKERS);
+  el.appendChild(who);
+  if (peek) {                                            // the ones that pop up wave
+    const hand = document.createElement("b");
+    hand.className = "wave";
+    hand.textContent = "👋";
+    el.appendChild(hand);
+  }
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), peek ? 2700 : 4300);
+}
 function celebrate() {
   if (REDUCED) return;
   // Don't let rapid taps pile up hundreds of nodes on a cheap tablet.
