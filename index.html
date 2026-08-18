@@ -399,6 +399,31 @@ function spellSmall(n) {
   const r = n % 100;
   return ONES[Math.floor(n / 100)] + " hundred" + (r ? " " + spellSmall(r) : "");
 }
+/* Say the number in real words rather than handing the speech engine a long
+   digit string and hoping it reads it as "five trillion" - engines differ, and
+   some spell the digits out one by one. */
+const SCALES = ["", " thousand", " million", " billion", " trillion"];
+function fullWords(n) {
+  const a = Math.abs(n), sign = n < 0 ? "negative " : "";
+  if (a < 1000) return sign + spellSmall(a);
+  const groups = [];
+  let x = a, i = 0;
+  while (x > 0 && i < SCALES.length) {
+    const g = x % 1000;
+    if (g) groups.unshift(spellSmall(g) + SCALES[i]);
+    x = Math.floor(x / 1000); i++;
+  }
+  return sign + groups.join(", ");
+}
+/* ...but a 13-digit number spelled in full is ~22 words, far too long for a
+   small child to sit through, so past a dozen words say the short size. */
+function spokenNumber(n) {
+  const words = fullWords(n);
+  if (words.split(/[\s,-]+/).filter(Boolean).length <= 12) return words;
+  const m = magnitudeWords(n);
+  return m ? "about " + m : fmt(n);
+}
+
 function magnitudeWords(n) {
   const a = Math.abs(n), sign = n < 0 ? "minus " : "";
   for (const [v, name] of [[1e12,"trillion"],[1e9,"billion"],[1e6,"million"],[1e3,"thousand"]]) {
@@ -1099,7 +1124,7 @@ function doNumber(min = 1, max = 10, praise) {
       $("numWrap").innerHTML = blockFigureHTML(final);
       celebrate();
       // say "negative five", not "dash five"
-      const spoken = final < 0 ? `negative ${fmt(Math.abs(final))}` : fmt(final);
+      const spoken = spokenNumber(final);
       speak(forElvin(praise, `Your number is ${spoken}!`));
       state.busy = false;
     }
