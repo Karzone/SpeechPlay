@@ -58,6 +58,7 @@
   }
 
   .action { border: none; border-radius: 20px; padding: 14px 28px; font-size: 20px; font-weight: 700; color: #fff; }
+  .action.mini { padding: 9px 14px; font-size: 15px; border-radius: 15px; }
   .a-red    { background: #ED1C24; box-shadow: 0 5px 0 #9B1B26; }
   .a-green  { background: #39B54A; box-shadow: 0 5px 0 #256B31; }
   .a-indigo { background: #4B4EA0; box-shadow: 0 5px 0 #33356E; }
@@ -129,8 +130,12 @@
     display: flex; align-items: center; justify-content: center;
     animation: blockPop .3s both;
   }
+  .num-words {
+    font-size: clamp(15px, 4.6vw, 22px); font-weight: 700; text-transform: capitalize;
+    text-shadow: 0 1px 0 #ffffff90; line-height: 1.1; text-align: center;
+  }
   .nb-card {
-    color: #fff; border-radius: 18px; padding: 14px 26px; font-size: 80px; font-weight: 700;
+    color: #fff; border-radius: 18px; padding: 10px 20px; font-size: 80px; font-weight: 700;
     box-shadow: 0 6px 0 #00000030; display: inline-flex; align-items: center; gap: 16px;
     text-shadow: 0 2px 0 #00000025; animation: bounceIn .4s;
   }
@@ -164,6 +169,7 @@
     .hints::-webkit-scrollbar { display: none; }
     .title { font-size: clamp(16px, 4.4vw, 22px); }
     #micBtn { width: 52px; height: 52px; font-size: 22px; }
+    #stage { min-height: 210px; gap: 7px; padding: 12px 10px; }
   }
 
   /* alphablocks */
@@ -369,7 +375,42 @@ const GREYS9 = ["#C9CDD2","#9AA0A8","#6E7680"];
 const VARIETY = [NBC[1],NBC[2],NBC[3],NBC[4],NBC[5],NBC[6],"#92278F",NBC[8],"#9AA0A8",NBC[1]];
 const PIPS = { 1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8] };
 const NUM_WORDS = { one:1,two:2,to:2,too:2,three:3,four:4,for:4,five:5,six:6,seven:7,eight:8,ate:8,nine:9,ten:10,
-  eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20,hundred:100 };
+  eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20,
+  thirty:30,forty:40,fourty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90 };
+
+/* "five million" -> 5000000. Only folds when a NUMBER comes first, so a bare
+   "millions" survives and is read as a range to pick from instead. */
+const MULT = { hundred:100, thousand:1000, million:1e6, billion:1e9, trillion:1e12 };
+const foldBigWords = (t) => t.replace(
+  /\b(\d+)\s+(hundred|thousand|million|billion|trillion)\b/g,
+  (_, d, w) => String(Number(d) * MULT[w]));
+
+// 1000000 -> "1,000,000" so it is readable on screen and spoken as words
+const fmt = (n) => Number(n).toLocaleString("en-GB");
+
+/* Counting zeros is hard for a small child, so big numbers get their size
+   spelled out above the digits: 7,000,000,000 -> "Seven Billion". */
+const ONES = ["zero","one","two","three","four","five","six","seven","eight","nine","ten",
+  "eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen"];
+const TENS = ["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
+function spellSmall(n) {
+  if (n < 20) return ONES[n];
+  if (n < 100) { const r = n % 10; return TENS[Math.floor(n / 10)] + (r ? "-" + ONES[r] : ""); }
+  const r = n % 100;
+  return ONES[Math.floor(n / 100)] + " hundred" + (r ? " " + spellSmall(r) : "");
+}
+function magnitudeWords(n) {
+  const a = Math.abs(n), sign = n < 0 ? "minus " : "";
+  for (const [v, name] of [[1e12,"trillion"],[1e9,"billion"],[1e6,"million"],[1e3,"thousand"]]) {
+    if (a >= v) {
+      const q = a / v;
+      // exact multiple reads as words; anything else as a short decimal
+      const head = (Number.isInteger(q) && q < 1000) ? spellSmall(q) : String(Math.round(q * 10) / 10);
+      return sign + head + " " + name;
+    }
+  }
+  return null;                      // under a thousand the digits speak for themselves
+}
 
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
@@ -379,7 +420,7 @@ const wordsToNums = (t) => t.split(/\s+/).map((w) => NUM_WORDS[w] !== undefined 
 const applySigns = (t) => t.replace(/\b(?:minus|negative|below zero)\s+(\d+)/g, "-$1");
 const $ = (id) => document.getElementById(id);
 // asking for one specific number shows "the number 10", not "between 10 and 10"
-const rangeLabel = (a, b) => (a === b ? `the number ${a}` : `between ${a} and ${b}`);
+const rangeLabel = (a, b) => (a === b ? `the number ${fmt(a)}` : `between ${fmt(a)} and ${fmt(b)}`);
 
 function blockStyle(n, i) {
   if (n === 7) return { bg: RAINBOW7[i % 7], border: null };
@@ -829,7 +870,15 @@ function blockFigureHTML(n) {
   const colour = mainColour(n);
   if (n < 1 || n > 15) {
     const border = Math.abs(n) % 10 === 0 ? `border:5px solid ${NBC[1]};` : "";
-    return `<div class="nb-card" style="background:${colour};${border}">${n}${faceHTML(n, false)}</div>`;
+    const label = fmt(n);
+    // a 13-character number will not fit at 80px, so scale with the digits
+    const L = label.length;
+    const fs = L > 12 ? 24 : L > 9 ? 30 : L > 6 ? 38 : L > 3 ? 52 : 80;
+    const words = magnitudeWords(n);
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+              ${words ? `<div class="num-words" style="color:${colour}">${words}</div>` : ""}
+              <div class="nb-card" style="background:${colour};${border}font-size:${fs}px">${label}${faceHTML(n, false)}</div>
+            </div>`;
   }
   const cols = Math.ceil(n / 5);
   let idx = -1, colsHTML = "";
@@ -910,9 +959,10 @@ function renderStage() {
       <div id="numWrap" style="min-height:190px;display:flex;align-items:center;justify-content:center"></div>
       <div class="subtle" id="numRangeLabel">${rangeLabel(state.numRange[0], state.numRange[1])}</div>
       <div class="row">
-        <button class="action a-indigo" onclick="doNumber(1,10,false)">1–10</button>
-        <button class="action a-red" onclick="doNumber(-10,10,false)">−10–10</button>
-        <button class="action a-cyan" onclick="doNumber(1,100,false)">1–100</button>
+        <button class="action mini a-indigo" onclick="doNumber(1,10,false)">1–10</button>
+        <button class="action mini a-red" onclick="doNumber(-10,10,false)">−10–10</button>
+        <button class="action mini a-cyan" onclick="doNumber(1,100,false)">1–100</button>
+        <button class="action mini a-green" onclick="doNumber(1000000,9999999,false)">Millions</button>
       </div>`;
   }
 
@@ -1039,7 +1089,9 @@ function doNumber(min = 1, max = 10, praise) {
   $("numRangeLabel").textContent = rangeLabel(min, max);
   let ticks = 0;
   const iv = setInterval(() => {
-    $("numWrap").innerHTML = `<div class="num-spin">${randInt(min, max)}</div>`;
+    const tick = fmt(randInt(min, max));
+    const ts = tick.length > 12 ? 30 : tick.length > 9 ? 38 : tick.length > 6 ? 50 : tick.length > 3 ? 68 : 96;
+    $("numWrap").innerHTML = `<div class="num-spin" style="font-size:${ts}px">${tick}</div>`;
     ticks++;
     if (ticks > 13) {
       clearInterval(iv);
@@ -1047,7 +1099,7 @@ function doNumber(min = 1, max = 10, praise) {
       $("numWrap").innerHTML = blockFigureHTML(final);
       celebrate();
       // say "negative five", not "dash five"
-      const spoken = final < 0 ? `negative ${Math.abs(final)}` : `${final}`;
+      const spoken = final < 0 ? `negative ${fmt(Math.abs(final))}` : fmt(final);
       speak(forElvin(praise, `Your number is ${spoken}!`));
       state.busy = false;
     }
@@ -1130,7 +1182,7 @@ function doAnimalByName(name, praise) {
 
 /* ================= voice command parser ================= */
 function handleCommand(raw) {
-  const text = applySigns(wordsToNums(raw.toLowerCase().replace(/[^a-z0-9\s]/g, " ")));
+  const text = foldBigWords(applySigns(wordsToNums(raw.toLowerCase().replace(/[^a-z0-9\s]/g, " "))));
   setBubble(`I heard: “${raw}”`);
 
   // Jokes are matched BEFORE animals, so "tell me a duck joke" tells the duck
@@ -1166,13 +1218,20 @@ function handleCommand(raw) {
     return doDice(count, sides, true);
   }
 
-  if (/\bnumber\b|\bcount\b|\bgenerate\b|\brandom\b|give me|\bchoose\b|\bshow\b/.test(text)) {
+  if (/\bnumber\b|\bcount\b|\bgenerate\b|\brandom\b|give me|\bchoose\b|\bshow\b|\bhundreds?\b|\bthousands?\b|\bmillions?\b|\bbillions?\b|\btrillions?\b/.test(text)) {
     const between = text.match(/between\s+(-?\d+)\s+and\s+(-?\d+)/);
     if (between) return doNumber(parseInt(between[1], 10), parseInt(between[2], 10), true);
     // "generate number 10" / "show me number 7" -> that exact number, not a random one
     const exact = text.match(/\bnumber\s+(-?\d+)\b/) ||
                   text.match(/\b(?:show|generate|make|give|do)\s+(?:me\s+)?(?:the\s+)?(-?\d+)\b/);
     if (exact) { const n = parseInt(exact[1], 10); return doNumber(n, n, true); }
+    /* A bare "million"/"millions" was never folded (no number in front of it),
+       so it means "pick one that big" rather than the number 1,000,000. */
+    if (/\btrillions?\b/.test(text)) return doNumber(1e12, 9999999999999, true);
+    if (/\bbillions?\b/.test(text))  return doNumber(1e9, 9999999999, true);
+    if (/\bmillions?\b/.test(text))  return doNumber(1e6, 9999999, true);
+    if (/\bthousands?\b/.test(text)) return doNumber(1000, 999999, true);
+    if (/\bhundreds?\b/.test(text))  return doNumber(100, 999, true);
     // "a negative number" / "a minus number" -> below zero only
     if (/\bnegative\b|\bminus\b/.test(text)) return doNumber(-10, -1, true);
     if (/big/.test(text)) return doNumber(1, 100, true);
@@ -1188,7 +1247,8 @@ function handleCommand(raw) {
   }
 
   // just shouting a number ("eight!") shows that Numberblock
-  const bare = text.match(/^\s*(-?\d{1,3})\s*$/);
+  // a bare number, including a folded one: 'seven billion' arrives as 7000000000
+  const bare = text.match(/^\s*(-?\d{1,13})\s*$/);
   if (bare) { const n = parseInt(bare[1], 10); return doNumber(n, n, true); }
 
   if (/\bhello\b|\bhi\b|\bhiya\b/.test(text)) return speak(`Hello ${NAME}! ${pick(ENCOURAGE)}`);
