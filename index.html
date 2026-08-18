@@ -496,6 +496,7 @@ const state = {
   muted: false, blocked: false, coinSpin: 0, dice: [], lastSides: 6,
   numRange: [1, 10], joke: null, lastJoke: -1, letter: null,
   paint: { name: "red", hex: "#ED1C24", size: 15, erasing: false }, paintData: null,
+  audioWarned: false,
 };
 
 /* Speech hears letter NAMES, not letters: "letter bee" means B. */
@@ -601,9 +602,18 @@ function speak(text, opts = {}) {
       u.volume = 1;
       u.rate = opts.rate ?? 0.9;
       u.pitch = opts.pitch ?? 1.15;
+      let began = false;
+      u.onstart = () => { began = true; };
       u.onend = resume;
       u.onerror = resume;
       speechSynthesis.speak(u);
+      // say something useful the first time speech is silently swallowed
+      setTimeout(() => {
+        if (!began && !state.audioWarned) {
+          state.audioWarned = true;
+          setBubble("\u{1F507} No sound? Check the silent switch, volume, then tap \u{1F50A}");
+        }
+      }, 1500);
       // send a friend past for anything longer than a word or two
       if (text.trim().length > 14 && Math.random() < 0.7) spawnPeeker();
     } catch (_) {
@@ -850,6 +860,37 @@ function playAnimalSound(a) {
   // hold the mic while the animal is sounding, same as when we speak
   suspendListening();
   setTimeout(resumeListening, dur * 1000 + 350);
+}
+
+/* Tapping the speaker runs a genuine end-to-end sound test and reports what
+   actually happened, so a silent phone can be diagnosed instead of guessed at. */
+function testSound() {
+  const v = ("speechSynthesis" in window) ? speechSynthesis.getVoices() : [];
+  if (!("speechSynthesis" in window)) { setBubble("\u{1F507} This browser has no speech"); return; }
+  if (!v.length) { setBubble("\u{1F507} No speech voices installed on this device"); return; }
+  let started = false;
+  const u = new SpeechSynthesisUtterance(`Hello ${NAME}! Can you hear me?`);
+  if (chosenVoice) u.voice = chosenVoice;
+  u.lang = (chosenVoice && chosenVoice.lang) || "en-GB";
+  u.volume = 1; u.rate = 0.9; u.pitch = 1.15;
+  u.onstart = () => { started = true; setBubble(`\u{1F50A} Speaking\u2026 ${chosenVoice ? chosenVoice.name : "default voice"}`); };
+  u.onerror = (e) => { setBubble(`\u274C Sound error: ${(e && e.error) || "unknown"}`); resumeListening(); };
+  u.onend = () => {
+    setBubble(started ? "\u2705 Sound is working!"
+                      : "\u26A0\uFE0F Never started \u2014 check the silent switch and volume");
+    resumeListening();
+  };
+  suspendListening();
+  setTimeout(() => {
+    try {
+      speechSynthesis.cancel();
+      if (speechSynthesis.paused) speechSynthesis.resume();
+      speechSynthesis.speak(u);
+    } catch (err) { setBubble("\u274C " + (err && err.message)); return; }
+    setTimeout(() => {
+      if (!started) setBubble(`\u26A0\uFE0F No sound started. ${v.length} voices found. Check the silent switch + volume.`);
+    }, 1600);
+  }, 220);
 }
 
 /* ================= confetti ================= */
@@ -1573,7 +1614,10 @@ $("soundBtn").addEventListener("click", () => {
   $("soundBtn").style.background = state.sound ? "#FCBF49" : "#ccc";
   if (!state.sound) {
     try { speechSynthesis.cancel(); } catch (_) {}
+    setBubble("\u{1F507} Sound off");
     resumeListening();   // nothing is talking now, so listening can resume
+  } else {
+    testSound();         // turning sound on proves whether it actually works
   }
 });
 $("dockCoin").addEventListener("click", () => doCoin(false));
