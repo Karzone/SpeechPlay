@@ -30,16 +30,16 @@
   button:active { transform: translateY(3px); }
 
   header { width: 100%; max-width: 460px; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
-  .title { font-size: clamp(17px, 4.8vw, 27px); font-weight: 700; color: #1D3B6B; text-shadow: 0 2px 0 #ffffff90; line-height: 1.15; }
+  .title { font-size: clamp(14px, 4vw, 24px); font-weight: 700; color: #1D3B6B; text-shadow: 0 2px 0 #ffffff90;
+           line-height: 1.1; min-width: 0; flex: 1; }
   .round { width: 40px; height: 40px; border-radius: 50%; border: none; font-size: 18px; box-shadow: 0 4px 0 #00000025; flex: none; }
 
-  .mic-wrap { display: flex; flex-direction: column; align-items: center; gap: 5px; margin-bottom: 2px; }
   #micBtn {
-    position: relative; width: 58px; height: 58px; border-radius: 50%; border: 3px solid #fff;
-    background: #1D3B6B; color: #fff; font-size: 25px; box-shadow: 0 5px 0 #0F2447;
+    position: relative; width: 46px; height: 46px; border-radius: 50%; border: 3px solid #fff;
+    background: #1D3B6B; color: #fff; font-size: 20px; box-shadow: 0 4px 0 #0F2447; flex: none;
   }
   #micBtn.on { background: #E63946; box-shadow: 0 0 0 8px #E6394633, 0 6px 0 #9B1B26; animation: pulse 1.2s infinite; }
-  #bubble {
+  #bubble { margin: 3px auto 0;
     background: #fff; color: #1D3B6B; border-radius: 14px; padding: 5px 12px;
     font-size: 13px; font-weight: 600; box-shadow: 0 3px 8px #0002; max-width: 330px;
     min-height: 18px; text-align: center; line-height: 1.3;
@@ -47,6 +47,7 @@
   #bubble:empty { display: none; }
 
   .hints { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 440px; }
+  body:not([data-mode="home"]) .hints { display: none; }
   .chip { background: #ffffffd9; color: #1D3B6B; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; box-shadow: 0 2px 4px #0002; white-space: nowrap; }
 
   #stage {
@@ -172,6 +173,20 @@
     #stage { min-height: 210px; gap: 7px; padding: 12px 10px; }
   }
 
+  /* drawing takes the whole screen - nothing to distract him, one way out */
+  body.paint-full { padding: 0; overflow: hidden; }
+  body.paint-full header, body.paint-full .hints, body.paint-full .dock,
+  body.paint-full #bubble { display: none; }
+  body.paint-full #stage {
+    border-radius: 0; margin: 0; max-width: none; width: 100%;
+    height: 100dvh; min-height: 100dvh; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    box-shadow: none; justify-content: flex-start; gap: 7px;
+  }
+  body.paint-full .paint-wrap { flex: 1; min-height: 0; }
+  body.paint-full #board { height: 100%; }
+  .paint-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+  .paint-head .t { font-size: 16px; font-weight: 700; }
+
   /* paint / whiteboard */
   .paint-wrap { width: 100%; max-width: 420px; }
   #board {
@@ -264,13 +279,10 @@
 
 <header>
   <div class="title">Elvin's Talking Play Machine</div>
+  <button id="micBtn" aria-label="Start or stop listening">🎤</button>
   <button class="round" id="soundBtn" style="background:#FCBF49">🔊</button>
 </header>
-
-<div class="mic-wrap">
-  <button id="micBtn" aria-label="Mute or unmute listening">🎤</button>
-  <div id="bubble"></div>
-</div>
+<div id="bubble"></div>
 
 <div class="hints">
   <span class="chip">🪙 “Flip a coin”</span>
@@ -1009,6 +1021,8 @@ function dieHTML(d, i, count, rolling) {
 
 function renderStage() {
   const s = $("stage");
+  document.body.dataset.mode = state.mode;
+  document.body.classList.toggle("paint-full", state.mode === "paint");
   document.querySelectorAll(".dock button").forEach((b) => b.classList.remove("active"));
   const dockMap = { coin: "dockCoin", dice: "dockDice", number: "dockNumber", joke: "dockJoke", paint: "dockPaint", letters: "dockLetters" };
   if (dockMap[state.mode]) $(dockMap[state.mode]).classList.add("active");
@@ -1076,7 +1090,12 @@ function renderStage() {
     sw += `<button class="swatch tool${state.paint.erasing ? " on" : ""}" aria-label="rubber"
              onclick="pickEraser()">\u{1F9FD}</button>`;
     s.innerHTML = `
-      <div style="font-size:18px;font-weight:700">Draw something, ${NAME}! \u{1F3A8}</div>
+      <div class="paint-head">
+        <button class="round" style="background:#ED1C24;color:#fff" aria-label="close drawing"
+                onclick="exitPaint()">\u2715</button>
+        <div class="t">Draw something, ${NAME}! \u{1F3A8}</div>
+        <span style="width:40px;flex:none"></span>   <!-- keeps the title centred -->
+      </div>
       <div class="paint-wrap"><canvas id="board"></canvas></div>
       <div class="palette">${sw}</div>
       <div class="row">
@@ -1342,6 +1361,19 @@ function clearBoard(praise) {
   celebrate();
   speak(forElvin(praise, "All clean! What shall we draw?"));
 }
+
+function exitPaint() {
+  saveBoard();
+  setMode("home");
+  speak(`Lovely drawing, ${NAME}!`);
+}
+// keep the picture when the phone rotates or the address bar slides away
+let boardResize = null;
+window.addEventListener("resize", () => {
+  if (state.mode !== "paint") return;
+  clearTimeout(boardResize);
+  boardResize = setTimeout(() => { saveBoard(); requestAnimationFrame(initBoard); }, 180);
+});
 
 function doLetter(a, praise) {
   state.letter = a;
