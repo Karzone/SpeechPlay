@@ -83,7 +83,7 @@
   .d-dice    { background: #39B54A; box-shadow: 0 5px 0 #256B31; }
   .d-number  { background: #4B4EA0; box-shadow: 0 5px 0 #33356E; }
   .d-joke    { background: #FFD200; box-shadow: 0 5px 0 #C49E12; color: #5a4500; }
-  .d-animals { background: #F7941D; box-shadow: 0 5px 0 #B56A0A; }
+  .d-paint { background: #F7941D; box-shadow: 0 5px 0 #B56A0A; }
   .d-letters { background: #00AEEF; box-shadow: 0 5px 0 #0678A3; }
 
   /* coin */
@@ -171,6 +171,21 @@
     #micBtn { width: 52px; height: 52px; font-size: 22px; }
     #stage { min-height: 210px; gap: 7px; padding: 12px 10px; }
   }
+
+  /* paint / whiteboard */
+  .paint-wrap { width: 100%; max-width: 420px; }
+  #board {
+    width: 100%; height: clamp(140px, 26vh, 230px); background: #fff; display: block;
+    border-radius: 16px; box-shadow: inset 0 0 0 3px #E8E4FF, 0 2px 6px #0002;
+    touch-action: none;            /* so a finger draws instead of scrolling */
+  }
+  .palette { display: flex; flex-wrap: wrap; gap: 7px; justify-content: center; max-width: 420px; }
+  .swatch {
+    width: 38px; height: 38px; border-radius: 50%; border: 3px solid #fff; padding: 0;
+    box-shadow: 0 3px 0 #00000025;
+  }
+  .swatch.on { box-shadow: 0 0 0 3px #1D3B6B, 0 3px 0 #00000025; }
+  .swatch.tool { background: #fff; font-size: 17px; line-height: 1; }
 
   /* alphablocks */
   .letter-grid {
@@ -262,7 +277,7 @@
   <span class="chip">🎲 “Roll ten dice”</span>
   <span class="chip">🔢 “Pick a number”</span>
   <span class="chip">😄 “Tell a joke”</span>
-  <span class="chip">🐮 “What does the cow say?”</span>
+  <span class="chip">🎨 “Paint something blue”</span>
 </div>
 
 <div id="stage"></div>
@@ -272,7 +287,7 @@
   <button class="d-dice"    id="dockDice"><span class="emoji">🎲</span>Dice</button>
   <button class="d-number"  id="dockNumber"><span class="emoji">🔢</span>Number</button>
   <button class="d-joke"    id="dockJoke"><span class="emoji">😄</span>Joke</button>
-  <button class="d-animals" id="dockAnimals"><span class="emoji">🐮</span>Animals</button>
+  <button class="d-paint" id="dockPaint"><span class="emoji">🎨</span>Paint</button>
   <button class="d-letters" id="dockLetters"><span class="emoji">🔤</span>Letters</button>
 </nav>
 
@@ -453,6 +468,15 @@ function blockStyle(n, i) {
   if (n === 10) return { bg: "#FFFFFF", border: NBC[1] };
   return { bg: NBC[n] || VARIETY[(Math.abs(n) - 1) % 10], border: null };
 }
+const PAINTS = [
+  { name: "red",    hex: "#ED1C24" }, { name: "orange", hex: "#F7941D" },
+  { name: "yellow", hex: "#FFD200" }, { name: "green",  hex: "#39B54A" },
+  { name: "blue",   hex: "#00AEEF" }, { name: "purple", hex: "#92278F" },
+  { name: "pink",   hex: "#EC008C" }, { name: "brown",  hex: "#8B5A2B" },
+  { name: "black",  hex: "#1A1A1A" },
+];
+const BRUSHES = [7, 15, 28];
+
 const ALPHA_PALETTE = ["#ED1C24", "#F7941D", "#FFD200", "#39B54A", "#00AEEF", "#4B4EA0", "#92278F", "#EC008C"];
 const letterColour = (i) => ALPHA_PALETTE[i % ALPHA_PALETTE.length];
 
@@ -471,6 +495,7 @@ const state = {
   speaking: false,    // the app is talking, so the mic is held off
   muted: false, blocked: false, coinSpin: 0, dice: [], lastSides: 6,
   numRange: [1, 10], joke: null, lastJoke: -1, letter: null,
+  paint: { name: "red", hex: "#ED1C24", size: 15, erasing: false }, paintData: null,
 };
 
 /* Speech hears letter NAMES, not letters: "letter bee" means B. */
@@ -944,7 +969,7 @@ function dieHTML(d, i, count, rolling) {
 function renderStage() {
   const s = $("stage");
   document.querySelectorAll(".dock button").forEach((b) => b.classList.remove("active"));
-  const dockMap = { coin: "dockCoin", dice: "dockDice", number: "dockNumber", joke: "dockJoke", animals: "dockAnimals", letters: "dockLetters" };
+  const dockMap = { coin: "dockCoin", dice: "dockDice", number: "dockNumber", joke: "dockJoke", paint: "dockPaint", letters: "dockLetters" };
   if (dockMap[state.mode]) $(dockMap[state.mode]).classList.add("active");
 
   if (state.mode === "home") {
@@ -1000,6 +1025,26 @@ function renderStage() {
       <button class="action a-yellow" onclick="doJoke(false)">😄 Another one!</button>`;
   }
 
+  if (state.mode === "paint") {
+    let sw = "";
+    for (const c of PAINTS) {
+      const on = !state.paint.erasing && state.paint.hex === c.hex ? " on" : "";
+      sw += `<button class="swatch${on}" style="background:${c.hex}" aria-label="${c.name}"
+               onclick="pickPaint('${c.name}', false)"></button>`;
+    }
+    sw += `<button class="swatch tool${state.paint.erasing ? " on" : ""}" aria-label="rubber"
+             onclick="pickEraser()">\u{1F9FD}</button>`;
+    s.innerHTML = `
+      <div style="font-size:18px;font-weight:700">Draw something, ${NAME}! \u{1F3A8}</div>
+      <div class="paint-wrap"><canvas id="board"></canvas></div>
+      <div class="palette">${sw}</div>
+      <div class="row">
+        <button class="action mini a-indigo" onclick="cycleBrush()">\u{270F}\u{FE0F} Size</button>
+        <button class="action mini a-red" onclick="clearBoard(false)">\u{1F5D1}\u{FE0F} Clear</button>
+      </div>`;
+    requestAnimationFrame(initBoard);
+  }
+
   if (state.mode === "letters") {
     const a = state.letter;
     let grid = "";
@@ -1030,7 +1075,7 @@ function renderStage() {
       <div class="subtle">Tap one, or say “What does the cow say?”</div>`;
   }
 }
-function setMode(m) { state.mode = m; renderStage(); }
+function setMode(m) { if (state.mode === "paint" && m !== "paint") saveBoard(); state.mode = m; renderStage(); }
 
 /* ================= actions ================= */
 function doCoin(praise) {
@@ -1185,6 +1230,78 @@ function doAnimal(a, praise) {
               : `Listen, ${NAME}! The ${a.name} says...`,
         { onend: () => playAnimalSound(a) });
 }
+/* ============ whiteboard ============ */
+let bctx = null, drawing = false, lastX = 0, lastY = 0;
+function initBoard() {
+  const c = $("board");
+  if (!c) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const r = c.getBoundingClientRect();
+  if (!r.width) { requestAnimationFrame(initBoard); return; }
+  c.width = Math.round(r.width * dpr);
+  c.height = Math.round(r.height * dpr);
+  bctx = c.getContext("2d");
+  bctx.scale(dpr, dpr);
+  bctx.lineCap = "round"; bctx.lineJoin = "round";
+  bctx.fillStyle = "#fff"; bctx.fillRect(0, 0, r.width, r.height);
+  if (state.paintData) {                       // put his drawing back after a mode switch
+    const img = new Image();
+    img.onload = () => bctx.drawImage(img, 0, 0, r.width, r.height);
+    img.src = state.paintData;
+  }
+  const at = (e) => { const b = c.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  c.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    drawing = true;
+    try { c.setPointerCapture(e.pointerId); } catch (_) {}
+    [lastX, lastY] = at(e);
+    bctx.fillStyle = brushColour();
+    bctx.beginPath(); bctx.arc(lastX, lastY, state.paint.size / 2, 0, Math.PI * 2); bctx.fill();
+  });
+  c.addEventListener("pointermove", (e) => {
+    if (!drawing) return;
+    const [x, y] = at(e);
+    bctx.strokeStyle = brushColour();
+    bctx.lineWidth = state.paint.size;
+    bctx.beginPath(); bctx.moveTo(lastX, lastY); bctx.lineTo(x, y); bctx.stroke();
+    lastX = x; lastY = y;
+  });
+  const stop = () => { if (drawing) { drawing = false; saveBoard(); } };
+  c.addEventListener("pointerup", stop);
+  c.addEventListener("pointercancel", stop);
+  c.addEventListener("pointerleave", stop);
+}
+const brushColour = () => (state.paint.erasing ? "#FFFFFF" : state.paint.hex);
+function saveBoard() {
+  const c = $("board");
+  if (c) { try { state.paintData = c.toDataURL(); } catch (_) {} }
+}
+function pickPaint(name, praise) {
+  const c = PAINTS.find((x) => x.name === name);
+  if (!c) return;
+  state.paint.name = c.name; state.paint.hex = c.hex; state.paint.erasing = false;
+  if (state.mode !== "paint") { setMode("paint"); } else { renderStage(); }
+  // naming the colour out loud is the point - so ask him to say it back
+  speak(praise ? `${pick(PRAISE)} ${c.name}!` : `${c.name}! Can you say ${c.name}, ${NAME}?`);
+}
+function pickEraser() {
+  state.paint.erasing = true;
+  renderStage();
+  speak(`Rubber! Wipe it away, ${NAME}!`);
+}
+function cycleBrush() {
+  const i = BRUSHES.indexOf(state.paint.size);
+  state.paint.size = BRUSHES[(i + 1) % BRUSHES.length];
+  const word = state.paint.size === BRUSHES[0] ? "thin" : state.paint.size === BRUSHES[1] ? "medium" : "fat";
+  speak(`A ${word} brush, ${NAME}!`);
+}
+function clearBoard(praise) {
+  state.paintData = null;
+  if (state.mode !== "paint") setMode("paint"); else initBoard();
+  celebrate();
+  speak(forElvin(praise, "All clean! What shall we draw?"));
+}
+
 function doLetter(a, praise) {
   state.letter = a;
   setMode("letters");                       // re-render so the big card updates
@@ -1214,6 +1331,20 @@ function handleCommand(raw) {
   // joke instead of quacking, and "banana joke" finds the banana one.
   if (/\bjoke\b|funny/.test(text)) return doJoke(true, findJokeByTopic(text));
   if (state.mode === "joke" && /\banother\b|\bagain\b|more/.test(text)) return doJoke(true);
+
+  // painting: colours by name, and clearing the board
+  if (/\bpaint\b|\bdraw\b|\bdrawing\b|colou?r|\bwhiteboard\b|\bbrush\b|\bcrayon\b/.test(text)) {
+    const c0 = PAINTS.find((c) => new RegExp(`\\b${c.name}\\b`).test(text));
+    if (c0) return pickPaint(c0.name, true);
+    setMode("paint");
+    return speak(`Let's draw, ${NAME}! Pick a colour!`);
+  }
+  if (state.mode === "paint") {
+    if (/\bclear\b|\bclean\b|\bwipe\b|\brub\b|\bstart again\b/.test(text)) return clearBoard(true);
+    if (/\brubber\b|\beraser\b/.test(text)) return pickEraser();
+    const c1 = PAINTS.find((c) => new RegExp(`\\b${c.name}\\b`).test(text));
+    if (c1) return pickPaint(c1.name, true);
+  }
 
   // "letter B" / "letter bee" -> that Alphablock
   const lm = text.match(/\bletter\s+([a-z]+)\b/);
@@ -1251,15 +1382,18 @@ function handleCommand(raw) {
                   text.match(/\b(?:show|generate|make|give|do)\s+(?:me\s+)?(?:the\s+)?(-?\d+)\b/);
     if (exact) { const n = parseInt(exact[1], 10); return doNumber(n, n, true); }
     /* A bare "million"/"millions" was never folded (no number in front of it),
-       so it means "pick one that big" rather than the number 1,000,000. */
-    if (/\btrillions?\b/.test(text)) return doNumber(1e12, 9999999999999, true);
-    if (/\bbillions?\b/.test(text))  return doNumber(1e9, 9999999999, true);
-    if (/\bmillions?\b/.test(text))  return doNumber(1e6, 9999999, true);
-    if (/\bthousands?\b/.test(text)) return doNumber(1000, 999999, true);
-    if (/\bhundreds?\b/.test(text))  return doNumber(100, 999, true);
-    // "a negative number" / "a minus number" -> below zero only
-    if (/\bnegative\b|\bminus\b/.test(text)) return doNumber(-10, -1, true);
-    if (/big/.test(text)) return doNumber(1, 100, true);
+       so it means "pick one that big" rather than the number 1,000,000.
+       Any of them can go below zero too: "negative millions", "minus thousands". */
+    const below = /\bnegative\b|\bminus\b/.test(text);
+    const mag = (lo, hi) => (below ? doNumber(-hi, -lo, true) : doNumber(lo, hi, true));
+    if (/\btrillions?\b/.test(text)) return mag(1e12, 9999999999999);
+    if (/\bbillions?\b/.test(text))  return mag(1e9, 9999999999);
+    if (/\bmillions?\b/.test(text))  return mag(1e6, 9999999);
+    if (/\bthousands?\b/.test(text)) return mag(1000, 999999);
+    if (/\bhundreds?\b/.test(text))  return mag(100, 999);
+    if (/\bbig\b|\bhuge\b|\bgiant\b/.test(text)) return mag(1, 100);
+    // "a negative number" / "a minus number" on its own
+    if (below) return doNumber(-100, -1, true);
     if (/\bpositive\b|\bcounting\b/.test(text)) return doNumber(1, 10, true);
     return doNumber(-10, 10, true);
   }
@@ -1446,7 +1580,7 @@ $("dockCoin").addEventListener("click", () => doCoin(false));
 $("dockDice").addEventListener("click", () => doDice(1, 6, false));
 $("dockNumber").addEventListener("click", () => doNumber(1, 10, false));
 $("dockJoke").addEventListener("click", () => doJoke(false));
-$("dockAnimals").addEventListener("click", () => setMode("animals"));
+$("dockPaint").addEventListener("click", () => setMode("paint"));
 $("dockLetters").addEventListener("click", () => setMode("letters"));
 
 renderStage();
