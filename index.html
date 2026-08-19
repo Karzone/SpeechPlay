@@ -48,6 +48,25 @@
 
   .hints { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-width: 440px; }
   body:not([data-mode="home"]) .hints { display: none; }
+
+  /* On a phone the title is pure decoration and the browser's own bar already
+     covers it, so drop it and let the two controls float out of the layout,
+     handing the whole width back to the play area. Below 380px there is not
+     enough room to float without covering a button, so there the row simply
+     stays in flow - still compact, just not floating. */
+  @media (max-width: 700px) {
+    header .title { display: none; }
+    header { justify-content: flex-end; margin-bottom: 0; }
+  }
+  @media (min-width: 381px) and (max-width: 700px) {
+    header { position: fixed; right: 8px; left: auto; top: auto; width: auto;
+             bottom: calc(96px + env(safe-area-inset-bottom));
+             margin: 0; gap: 6px; z-index: 6; }
+    body { padding-top: 4px; }
+    #bubble { margin-top: 0; }
+    body:not(.paint-full) #stage { padding-bottom: 54px; }
+  }
+  body.paint-full header { display: none; }
   .chip { background: #ffffffd9; color: #1D3B6B; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; box-shadow: 0 2px 4px #0002; white-space: nowrap; }
 
   #stage {
@@ -464,6 +483,10 @@ function magnitudeWords(n) {
   return null;                      // under a thousand the digits speak for themselves
 }
 
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+// on iPhone every browser is WebKit, but only Safari's speech output is reliable
+const IOS_NOT_SAFARI = IOS && /CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
+
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
 const wordsToNums = (t) => t.split(/\s+/).map((w) => NUM_WORDS[w] !== undefined ? NUM_WORDS[w] : w).join(" ");
@@ -623,7 +646,9 @@ function speak(text, opts = {}) {
       setTimeout(() => {
         if (!began && !state.audioWarned) {
           state.audioWarned = true;
-          setBubble("\u{1F507} No sound? Check the silent switch, volume, then tap \u{1F50A}");
+          setBubble(IOS_NOT_SAFARI
+            ? "\u{1F507} Open this page in Safari to hear the voice"
+            : "\u{1F507} No sound? Check the silent switch, volume, then tap \u{1F50A}");
         }
       }, 1500);
       // send a friend past for anything longer than a word or two
@@ -889,7 +914,8 @@ function testSound() {
   u.onerror = (e) => { setBubble(`\u274C Sound error: ${(e && e.error) || "unknown"}`); resumeListening(); };
   u.onend = () => {
     setBubble(started ? "\u2705 Sound is working!"
-                      : "\u26A0\uFE0F Never started \u2014 check the silent switch and volume");
+      : IOS_NOT_SAFARI ? "\u26A0\uFE0F Chrome on iPhone can't speak \u2014 open in Safari"
+      : "\u26A0\uFE0F Never started \u2014 check the silent switch and volume");
     resumeListening();
   };
   suspendListening();
@@ -900,7 +926,9 @@ function testSound() {
       speechSynthesis.speak(u);
     } catch (err) { setBubble("\u274C " + (err && err.message)); return; }
     setTimeout(() => {
-      if (!started) setBubble(`\u26A0\uFE0F No sound started. ${v.length} voices found. Check the silent switch + volume.`);
+      if (!started) setBubble(IOS_NOT_SAFARI
+        ? "\u26A0\uFE0F Chrome on iPhone can't speak \u2014 open this page in Safari"
+        : `\u26A0\uFE0F No sound started. ${v.length} voices found. Check the silent switch + volume.`);
     }, 1600);
   }, 220);
 }
